@@ -46,7 +46,7 @@ type Config_file struct {
 	Methods []string
 	Predecessor interface{}
 	Successor interface{}
-
+    Knownnode interface{}
 
 }
 
@@ -58,7 +58,7 @@ type Dict int
 var filename string
 var successor Nodeid
 var predecessor Nodeid
-
+var knownnode Nodeid
 var selfnode Nodeid
 //Hash function returns 64 bit
 func hash(input string) uint32 {
@@ -88,6 +88,92 @@ func getHashValueForItem(s1 string,s2 string ) uint64{
 }
 
 
+
+func Join(a int, b *int) error{
+	
+	var dummy *Nodeid
+	dummy = &Nodeid{
+				IpAddress:"",
+				Port:0,
+				Id:0}
+    config_obj.Predecessor=*dummy
+    predecessor=*dummy
+    c, _ := jsonrpc.Dial(config_obj.Protocol, knownnode.IpAddress +":"+strconv.Itoa(knownnode.Port))
+	      //var reply1 string
+          var id uint64
+          id=config_obj.ServerID
+          var succ Nodeid
+		 rpc_call := c.Go("Dict.Find_successor",id,&succ,nil)	
+
+		  <-rpc_call.Done
+		  config_obj.Successor=succ
+		  successor=succ
+		  print ("In join: Changed Successor to:", successor.Id )
+
+		      var input string
+	fmt.Scanln(&input)
+	fmt.Println("Done")    
+
+	return nil
+}
+func (t* Dict) Stabilize(a int, reply *string) error{
+	 c, _ := jsonrpc.Dial(config_obj.Protocol, successor.IpAddress +":"+strconv.Itoa(successor.Port))
+    
+    a=0
+    var pred Nodeid
+		 rpc_call := c.Go("Dict.AskPredecessor",a,&pred,nil)
+		 <-rpc_call.Done
+		 if (pred.Id > config_obj.ServerID && pred.Id < successor.Id){
+		 	config_obj.Successor=pred
+		 	successor=pred
+
+         }
+        c1, _ := jsonrpc.Dial(config_obj.Protocol, successor.IpAddress +":"+strconv.Itoa(successor.Port))
+
+        rpc_call1 := c1.Go("Dict.Notify",a,&a,nil)
+
+		 <-rpc_call1.Done
+
+return nil
+}
+
+
+func (t* Dict) Notify(newnode *Nodeid,b *int) error{
+	var dummy *Nodeid
+	dummy = &Nodeid{
+				IpAddress:"",
+				Port:0,
+				Id:0}
+if (predecessor==*dummy ||  (newnode.Id > predecessor.Id && newnode.Id <config_obj.ServerID)){
+	config_obj.Predecessor=*newnode
+	predecessor=*newnode
+}
+
+
+
+return nil
+}
+
+
+func (t* Dict) AskPredecessor(a int,prednode *Nodeid) error{
+*prednode=predecessor
+
+return nil
+}
+
+func (t* Dict) CheckPredecessor(a int,b *int) error{
+_, err := net.DialTimeout("tcp", predecessor.IpAddress +":"+strconv.Itoa(predecessor.Port), time.Duration(3)*time.Second)
+var dummy *Nodeid
+	dummy = &Nodeid{
+				IpAddress:"",
+				Port:0,
+				Id:0}			
+if err != nil {
+config_obj.Predecessor=*dummy
+predecessor=*dummy
+}
+return nil
+}
 //This function read server configuration from a file and stores informaton is Config_file structure
 func read_server_config_file(severConfigFile string){
 
@@ -149,6 +235,37 @@ func read_server_config_file(severConfigFile string){
 
 	    }
     }
+
+
+
+tempknownnode := config_obj.Knownnode
+    m3 := tempknownnode.(map[string]interface{})
+    // println("Successor is :")
+    for k, v := range m3 {
+    	 switch v.(type) {
+
+    	 
+    	     	 	
+    	case string:
+    		if k=="serverID"{
+    			knownnode.Id,_ = strconv.ParseUint(v.(string), 10, 64)
+    			println("\nKnownnode ID is ");print(knownnode.Id)
+    		} else{
+				knownnode.IpAddress=v.(string)    	 	
+				println("knownnode IP is ");print(knownnode.IpAddress)
+    		}
+    		break
+
+
+	    default:
+	    	knownnode.Port=int(v.(float64))
+	    	println("knownnode Port ");print(knownnode.Port)
+	    	break
+
+	    }
+    }
+
+
     tempPredecessor := config_obj.Predecessor
     m2 := tempPredecessor.(map[string]interface{})
     // println("\nPredecessor is : ")
@@ -236,6 +353,7 @@ func find_successor(id uint64) Nodeid {
 		var nextnode Nodeid
 		nextnode = closest_preceding_node(id)
 		if (nextnode==selfnode){
+			
 			return successor
 		}
 		// println("Next node: ");print(nextnode.IpAddress);println(nextnode.Port);println(nextnode.Id)
@@ -789,12 +907,9 @@ func (t *Dict) Delete(input_objPtr *Params_struct, reply *string) error {
 	} //else of successor
     return nil	
 }
-
 func getListOfKeys() string {
 
 	key_rel_map := make(map[string]string)
-	var reply string
-	var id int
 	// extract_params(f,&id)
 	file, err := os.Open(filename)
 
@@ -831,30 +946,43 @@ func getListOfKeys() string {
     }
     //Marshal the array to convert to string
     string_arr,_ := json.Marshal(list_of_keys)
+    println("Reply from function is ",string(string_arr))
+    return string(string_arr)
 
-    resp_obj := &Response_message{
-						Result:string(string_arr),
-						Id: id,
+
+
+    
+}
+
+func constructListReply(list_of_keys_string string)string{
+
+	if(len(list_of_keys_string) > 0){
+		list_of_keys_string = list_of_keys_string[0:len(list_of_keys_string)-1]
+	}
+	resp_obj := &Response_message{
+						Result:"["+list_of_keys_string+"]",
+						Id: 0,
 						Error: "null"}	
 
     b,_ := json.Marshal(resp_obj)
-    reply = string(b)
-    fmt.Println("\nReply sent is :  ",string(b))
+    
+    
 
 	// println("Done with the call..\n")
-	return reply
+	return string(b)
+
 }
 
 //Read triplets from the file, store key, relation pair into the map and return the list of keys
 func (t *Dict) ListKeys(input_objPtr *Params_struct, reply *string) error {
 	
 	
-	fmt.Println("Reply string before calling the function is : ",*reply)
+	// fmt.Println("Reply string before calling the function is : ",*reply)
 	
 
 	var key string;
 	key = (*input_objPtr).Key
-	println("Key is : ",key)
+	// println("Key is : ",key)
 	hashValue := getHashValueForItem(config_obj.IpAddress, strconv.Itoa( config_obj.Port))
 
 	if(len(key) == 0){ //First node initiating request insert its own ID in key and make RPC to Successor
@@ -862,6 +990,9 @@ func (t *Dict) ListKeys(input_objPtr *Params_struct, reply *string) error {
 		fmt.Println("First node initiating listKeys ")	
 
 		list_of_keys_reply := getListOfKeys()
+		list_of_keys_reply =convertToResult(list_of_keys_reply)
+		// fmt.Println("After Conversion ",list_of_keys_reply)
+		// fmt.Printf("Length After Conversion %d",len(list_of_keys_reply))			
 		(*input_objPtr).Key = strconv.FormatUint(config_obj.ServerID,10)
 
 		//
@@ -878,12 +1009,23 @@ func (t *Dict) ListKeys(input_objPtr *Params_struct, reply *string) error {
 
 			 rpc_call := c.Go("Dict.ListKeys",input_objPtr,&reply1,nil)		
 			  <-rpc_call.Done
-			 ( *reply) += list_of_keys_reply +reply1
-			  fmt.Println("Reply string after RPC to next node is : ",*reply)
+			  if(len(list_of_keys_reply) == 0){
+
+			 		( *reply) += list_of_keys_reply +reply1
+			  }else {
+			  		( *reply) += list_of_keys_reply +","+reply1
+			  }
+			
+			 *reply = constructListReply(*reply)
+			 //TO-DO This is final reply to be sent. Construct reply here
+			  // fmt.Println("Reply string after RPC to next node is : ",*reply)
 
 		} else {
+
 			*reply = list_of_keys_reply
-			return nil	
+			*reply = constructListReply(*reply)
+			//TO-DO This is final reply to be sent. Construct reply here
+			
 		}
 
 		
@@ -899,6 +1041,7 @@ func (t *Dict) ListKeys(input_objPtr *Params_struct, reply *string) error {
 			//make an RPC call
 			
 			list_of_keys_reply := getListOfKeys()
+		list_of_keys_reply =convertToResult(list_of_keys_reply)
 
 
 			//PRC to sucessor
@@ -910,22 +1053,31 @@ func (t *Dict) ListKeys(input_objPtr *Params_struct, reply *string) error {
 
 			 rpc_call := c.Go("Dict.ListKeys",input_objPtr,&reply1,nil)		
 			  <-rpc_call.Done
-		(*reply) += list_of_keys_reply+reply1
-			  fmt.Println("Reply string after RPC to next node is : ",*reply)
+			
+			 if(len(list_of_keys_reply) == 0){
+
+			 		( *reply) += list_of_keys_reply +reply1
+			  }else {
+			  		( *reply) += list_of_keys_reply +","+reply1
+			  }
+			
+			  // fmt.Println("Reply string after RPC to next node is : ",*reply)
 
 
 		}else{
 			(*reply)=""
+			// *reply = constructListReply(*reply)
 		} 
 
 
 	}
+	
 	return nil
 	
 }
-//This function returns list of key,relation pair in paramater *reply
-func (t *Dict) ListIDs(input_objPtr *Params_struct, reply *string) error {
-	
+
+func getListOfIDs() string{
+
 	key_rel_map := make(map[string]string)
 	// var f interface{}
 	//Unmarshal in map of string to interface
@@ -933,7 +1085,7 @@ func (t *Dict) ListIDs(input_objPtr *Params_struct, reply *string) error {
 	// if err != nil {
 		// log.Fatal("error:",err);
 	// }
-	var id int
+	
 	// extract_params(f,&id)
 	file, err := os.Open(filename)
 
@@ -973,15 +1125,130 @@ func (t *Dict) ListIDs(input_objPtr *Params_struct, reply *string) error {
     }
     //Marshal the array to convert to string
     string_arr,_ := json.Marshal(list_of_keys)
-    resp_obj := &Response_message{
-						Result:string(string_arr),
-						Id: id,
-						Error: "null"}	
+    // resp_obj := &Response_message{
+				// 		Result:string(string_arr),
+				// 		Id: id,
+				// 		Error: "null"}	
 
-    b,_ := json.Marshal(resp_obj)
-    *reply = string(b)
-    fmt.Println("\nReply sent is : ",string(b))
-	// println("Done with the call..\n")
+    // b,_ := json.Marshal(resp_obj)
+    
+    return string(string_arr)
+    
+	
+}
+
+func convertToResult(str string) string{
+	var y string
+	if(len(str) >=1 ){
+		y = str[0:len(str)-1]
+	}
+	if (len(y) >1 ){
+		y = y[1:len(y)]
+		return y
+	}
+	return ""
+	
+
+
+}
+//This function returns list of key,relation pair in paramater *reply
+func (t *Dict) ListIDs(input_objPtr *Params_struct, reply *string) error {
+	
+	// fmt.Println("Reply string before calling the function is : ",*reply)
+	
+
+	var key string;
+	key = (*input_objPtr).Key
+	// println("Key is : ",key)
+	hashValue := getHashValueForItem(config_obj.IpAddress, strconv.Itoa( config_obj.Port))
+
+	if(len(key) == 0){ //First node initiating request insert its own ID in key and make RPC to Successor
+
+		fmt.Println("First node initiating listKeys ")	
+
+		list_of_ids_reply := getListOfIDs()
+		list_of_ids_reply = convertToResult(list_of_ids_reply)
+		(*input_objPtr).Key = strconv.FormatUint(config_obj.ServerID,10)
+
+		//
+
+		//PRC to sucessor
+		succ_node := find_successor(hashValue)
+
+		if(succ_node.Id != config_obj.ServerID) { //node is successor of itself, one node case
+			fmt.Println("Successor node is ",succ_node.Port)
+
+			c, _ := jsonrpc.Dial(config_obj.Protocol, succ_node.IpAddress +":"+strconv.Itoa(succ_node.Port))
+		       var reply1 string
+		     
+
+			 rpc_call := c.Go("Dict.ListIDs",input_objPtr,&reply1,nil)		
+			  <-rpc_call.Done
+			 
+			 	 if(len(list_of_ids_reply) == 0){
+
+			 		( *reply) += list_of_ids_reply +reply1
+			  }else {
+			  		( *reply) += list_of_ids_reply +","+reply1
+			  }
+			 //TO-DO This is final reply to be sent. Construct reply here
+			 *reply = constructListReply(*reply)
+			  // fmt.Println("Reply string after RPC to next node is : ",*reply)
+
+		} else {
+
+			*reply = list_of_ids_reply
+			*reply = constructListReply(*reply)
+			//TO-DO This is final reply to be sent. Construct reply here
+			
+		}
+
+		
+
+	} else {
+
+		id, err := strconv.ParseUint(key, 10, 64)
+		
+		if err != nil {
+    		panic(err)	
+		}
+		if(id != config_obj.ServerID){ //Checking if it is the first node
+			//make an RPC call
+			
+			list_of_ids_reply := getListOfIDs()
+			list_of_ids_reply = convertToResult(list_of_ids_reply)
+
+
+			//PRC to sucessor
+			succ_node := find_successor(hashValue)
+			fmt.Println("Successor node is ",succ_node.Port)
+			c, _ := jsonrpc.Dial(config_obj.Protocol, succ_node.IpAddress +":"+strconv.Itoa(succ_node.Port))
+		       var reply1 string
+		  
+
+			 rpc_call := c.Go("Dict.ListIDs",input_objPtr,&reply1,nil)		
+			  <-rpc_call.Done
+			  
+			 
+			 	 if(len(list_of_ids_reply) == 0){
+
+			 		( *reply) += list_of_ids_reply +reply1
+			  }else {
+			  		( *reply) += list_of_ids_reply +","+reply1
+			  }
+				
+		
+			  
+
+
+		}else{
+			(*reply)=""
+			
+		} 
+
+
+	}
+	
 	return nil
 }
 //This function closes the existing connection, stops the listener and then exit the server program
@@ -999,6 +1266,8 @@ func (t *Dict) Shutdown(input_objPtr *Params_struct,reply *string) error {
 var listener net.Listener //this holds the Listener object
 var conn net.Conn //This holds the connection
 var dict *Dict
+
+
 func startServer() {
 	if len(os.Args) != 2{
  		fmt.Println("Specify server configuration file")
@@ -1024,9 +1293,26 @@ func startServer() {
         
     }
     println("\nAccepting connections...\n")
-    
-   	
-    	
+    // var a int
+    // var b int
+    // a=0    
+
+          
+//   go func() {
+    // if (config_obj.ServerID !=18446744069425632628) {
+//    		c1, errr := jsonrpc.Dial(config_obj.Protocol, knownnode.IpAddress +":"+strconv.Itoa(knownnode.Port))
+
+  //  	if errr != nil {
+    //		fmt.Println("Connectiin is ",c1)
+    //		fmt.Println("Error in Join RPC")
+    //	}
+      //  rpc_call := c1.Go("Dict.Join",a,&b,nil)
+         // Join(a,&b);
+
+		 //<-rpc_call.Done
+
+    	// }
+//     	}()
     for {
 		    
  
