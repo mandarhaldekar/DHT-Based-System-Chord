@@ -62,7 +62,7 @@ var knownnode Nodeid
 var selfnode Nodeid
 //Hash function returns 64 bit
 func hash(input string) uint32 {
-        hashValue := fnv.New32()
+        hashValue := fnv.New32() % 15
         hashValue.Write([]byte(input))
         return hashValue.Sum32()
 }
@@ -353,8 +353,13 @@ func find_successor(id uint64) Nodeid {
 		var nextnode Nodeid
 		nextnode = closest_preceding_node(id)
 		if (nextnode==selfnode){
-			
-			return successor
+			if(id< config_obj.ServerID){
+				return selfnode
+			}else{
+		
+			// return selfnode
+			 return successor
+			}
 		}
 		// println("Next node: ");print(nextnode.IpAddress);println(nextnode.Port);println(nextnode.Id)
 		var output Nodeid
@@ -1293,13 +1298,13 @@ func startServer() {
         
     }
     println("\nAccepting connections...\n")
-    // var a int
-    // var b int
-    // a=0    
+    var a int
+    var b int
+    a=0    
 
           
 //   go func() {
-    // if (config_obj.ServerID !=18446744069425632628) {
+    if (config_obj.ServerID !=18446744069425632628) {
 //    		c1, errr := jsonrpc.Dial(config_obj.Protocol, knownnode.IpAddress +":"+strconv.Itoa(knownnode.Port))
 
   //  	if errr != nil {
@@ -1307,12 +1312,12 @@ func startServer() {
     //		fmt.Println("Error in Join RPC")
     //	}
       //  rpc_call := c1.Go("Dict.Join",a,&b,nil)
-         // Join(a,&b);
+         Join(a,&b);
 
 		 //<-rpc_call.Done
 
-    	// }
-//     	}()
+    	}
+    	// }()
     for {
 		    
  
