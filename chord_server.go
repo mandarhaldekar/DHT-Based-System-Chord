@@ -28,7 +28,7 @@ type Response_message struct {
 type Nodeid struct{
 	IpAddress string `json:"ipAddress" bson:"ipAddress"`
 	Port int `json:"port" bson:"port"`
-	Id uint64 `json:"serverID" bson:"serverID"`
+	Id int `json:"serverID" bson:"serverID"`
 }
 
 type Params_struct struct {
@@ -38,7 +38,7 @@ type Params_struct struct {
 }
 
 type Config_file struct {
-	ServerID uint64
+	ServerID int
 	Protocol string
 	IpAddress string
 	Port int
@@ -50,7 +50,7 @@ type Config_file struct {
 
 }
 
-const max_bit int = 64
+const max_bit int = 8
 var finger = make([]Nodeid,max_bit+1)
 
 var config_obj Config_file
@@ -62,9 +62,9 @@ var knownnode Nodeid
 var selfnode Nodeid
 //Hash function returns 64 bit
 func hash(input string) uint32 {
-        hashValue := fnv.New32() % 15
+        hashValue := fnv.New32()
         hashValue.Write([]byte(input))
-        return hashValue.Sum32()
+        return ((hashValue.Sum32()) % 15)
 }
 
 
@@ -72,18 +72,17 @@ func hash(input string) uint32 {
 
 
 //This function generates node ID using hash function on IP Address and Port
-func getHashValueForItem(s1 string,s2 string ) uint64{
+//This function expects key as first input and relation as second and returns HashValue where 
+//first 4 bits corresponds to key and last 4 bits corresponds to relation
+func getHashValueForItem(s1 string,s2 string ) int{
+
 
 	// config_obj.IpAddress
-	a := uint64(hash(s1))
-	b := uint64(hash(s2))
-	c := uint64(0)
-	d := uint64(0xFFFFFFFFFFFFFFFF)
-	e := c | b
-	f := (d | a) << 32
-	g := e | f
-	
-	return g
+	a := hash(s1)
+	b := hash(s2)
+	d := a<<4
+	c := d | b
+	return int(c)
 	
 }
 
@@ -100,7 +99,7 @@ func Join(a int, b *int) error{
     predecessor=*dummy
     c, _ := jsonrpc.Dial(config_obj.Protocol, knownnode.IpAddress +":"+strconv.Itoa(knownnode.Port))
 	      //var reply1 string
-          var id uint64
+          var id int
           id=config_obj.ServerID
           var succ Nodeid
 		 rpc_call := c.Go("Dict.Find_successor",id,&succ,nil)	
@@ -219,7 +218,8 @@ func read_server_config_file(severConfigFile string){
     	     	 	
     	case string:
     		if k=="serverID"{
-    			successor.Id,_ = strconv.ParseUint(v.(string), 10, 64)
+    			temp_id,_ := strconv.ParseInt(v.(string), 10, 32)
+    			successor.Id = int(temp_id)
     			// println("\nSuccessor ID is ");print(successor.Id)
     		} else{
 				successor.IpAddress=v.(string)    	 	
@@ -248,7 +248,9 @@ tempknownnode := config_obj.Knownnode
     	     	 	
     	case string:
     		if k=="serverID"{
-    			knownnode.Id,_ = strconv.ParseUint(v.(string), 10, 64)
+    			
+    			temp_id,_ := strconv.ParseInt(v.(string), 10, 32)
+    			knownnode.Id = int(temp_id)
     			println("\nKnownnode ID is ");print(knownnode.Id)
     		} else{
 				knownnode.IpAddress=v.(string)    	 	
@@ -276,7 +278,9 @@ tempknownnode := config_obj.Knownnode
     	     	 	
     	case string:
     		if k1=="serverID"{
-    			predecessor.Id,_=strconv.ParseUint(v1.(string), 10, 64)
+    			
+    			temp_id,_ := strconv.ParseInt(v1.(string), 10, 32)
+    			predecessor.Id = int(temp_id)
     			// println("\nPredecessor ID is ");print(predecessor.Id)
     		} else{
 				predecessor.IpAddress=v1.(string)    	 	
@@ -325,7 +329,7 @@ func fix_fingers() {
 	for i = 1;i<=max_bit;i++{
 
 
-	modID := ( config_obj.ServerID + uint64(math.Pow(2,float64(i-1))) % ( uint64(math.Pow(2,float64(64))) -1 ) )  
+	modID := ( config_obj.ServerID + int(math.Pow(2,float64(i-1))) % ( int(math.Pow(2,float64(8))) -1 ) )  
 	var tempNodeid Nodeid
 		//(*dict).Find_successor(modID,&tempNodeid)
 	// println("Before calling find successor")
@@ -343,7 +347,7 @@ func fix_fingers() {
 	
 
 }
-func find_successor(id uint64) Nodeid {
+func find_successor(id int) Nodeid {
 
 	
 	if id<= successor.Id && id > config_obj.ServerID {
@@ -352,15 +356,15 @@ func find_successor(id uint64) Nodeid {
 	}else{
 		var nextnode Nodeid
 		nextnode = closest_preceding_node(id)
-		if (nextnode==selfnode){
-			if(id< config_obj.ServerID){
-				return selfnode
-			}else{
+		// if (nextnode==selfnode){
+		// 	if(id< config_obj.ServerID){
+		// 		return selfnode
+		// 	}else{
 		
-			// return selfnode
-			 return successor
-			}
-		}
+		// 	// return selfnode
+		// 	 return successor
+		// 	}
+		// }
 		// println("Next node: ");print(nextnode.IpAddress);println(nextnode.Port);println(nextnode.Id)
 		var output Nodeid
 
@@ -380,12 +384,12 @@ func find_successor(id uint64) Nodeid {
 
 }
 
-func (t* Dict) Find_successor(id uint64,output *Nodeid) error {
+func (t* Dict) Find_successor(id int,output *Nodeid) error {
 	
 	*output = find_successor(id)
 	return nil
 }
-func closest_preceding_node(id uint64) Nodeid {
+func closest_preceding_node(id int) Nodeid {
 	
      for i:=max_bit; i>=1; i--{
     
@@ -997,8 +1001,9 @@ func (t *Dict) ListKeys(input_objPtr *Params_struct, reply *string) error {
 		list_of_keys_reply := getListOfKeys()
 		list_of_keys_reply =convertToResult(list_of_keys_reply)
 		// fmt.Println("After Conversion ",list_of_keys_reply)
-		// fmt.Printf("Length After Conversion %d",len(list_of_keys_reply))			
-		(*input_objPtr).Key = strconv.FormatUint(config_obj.ServerID,10)
+		// fmt.Printf("Length After Conversion %d",len(list_of_keys_reply))
+				
+		(*input_objPtr).Key = strconv.Itoa(config_obj.ServerID)
 
 		//
 
@@ -1037,7 +1042,8 @@ func (t *Dict) ListKeys(input_objPtr *Params_struct, reply *string) error {
 
 	} else {
 
-		id, err := strconv.ParseUint(key, 10, 64)
+		id, err := strconv.Atoi(key)
+		
 		
 		if err != nil {
     		panic(err)	
@@ -1173,7 +1179,7 @@ func (t *Dict) ListIDs(input_objPtr *Params_struct, reply *string) error {
 
 		list_of_ids_reply := getListOfIDs()
 		list_of_ids_reply = convertToResult(list_of_ids_reply)
-		(*input_objPtr).Key = strconv.FormatUint(config_obj.ServerID,10)
+		(*input_objPtr).Key = strconv.Itoa(config_obj.ServerID)
 
 		//
 
@@ -1211,8 +1217,8 @@ func (t *Dict) ListIDs(input_objPtr *Params_struct, reply *string) error {
 		
 
 	} else {
-
-		id, err := strconv.ParseUint(key, 10, 64)
+		id, err := strconv.Atoi(key)
+		
 		
 		if err != nil {
     		panic(err)	
@@ -1304,7 +1310,7 @@ func startServer() {
 
           
 //   go func() {
-    if (config_obj.ServerID !=18446744069425632628) {
+    // if (config_obj.ServerID !=13) {
 //    		c1, errr := jsonrpc.Dial(config_obj.Protocol, knownnode.IpAddress +":"+strconv.Itoa(knownnode.Port))
 
   //  	if errr != nil {
@@ -1312,11 +1318,11 @@ func startServer() {
     //		fmt.Println("Error in Join RPC")
     //	}
       //  rpc_call := c1.Go("Dict.Join",a,&b,nil)
-         Join(a,&b);
+        // Join(a,&b);
 
 		 //<-rpc_call.Done
 
-    	}
+    	// }
     	// }()
     for {
 		    
