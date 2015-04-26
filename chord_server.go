@@ -88,7 +88,7 @@ func getHashValueForItem(s1 string,s2 string ) int{
 
 
 
-func Join(a int, b *int) error{
+func Join(){
 	
 	var dummy *Nodeid
 	dummy = &Nodeid{
@@ -109,11 +109,7 @@ func Join(a int, b *int) error{
 		  successor=succ
 		  print ("In join: Changed Successor to:", successor.Id )
 
-		      var input string
-	fmt.Scanln(&input)
-	fmt.Println("Done")    
-
-	return nil
+	
 }
 func Stabilize() error{
 	 c, _ := jsonrpc.Dial(config_obj.Protocol, successor.IpAddress +":"+strconv.Itoa(successor.Port))
@@ -127,19 +123,23 @@ func Stabilize() error{
 		 	fmt.Println("In If condition to update Successor")
 		 	config_obj.Successor=pred
 		 	successor=pred
-		 	fmt.Println("Updated successor : ",successor.Id)
+		 	fmt.Printf("Updated successor %d , IP is %s , Port is %d ",successor.Id,successor.IpAddress,successor.Port)
 
 
          }
          fmt.Println("in stabilize before calling notify")
-        c1, _ := jsonrpc.Dial(config_obj.Protocol, successor.IpAddress +":"+strconv.Itoa(successor.Port))
+        c1, e1 := jsonrpc.Dial(config_obj.Protocol, successor.IpAddress +":"+strconv.Itoa(successor.Port))
+        if e1 != nil {
+        	fmt.Println("Error while calling RPC")
+        	panic(e1)
+        }
 
         rpc_call1 := c1.Go("Dict.Notify",&selfnode,&a,nil)
 
 		 <-rpc_call1.Done
 
 fmt.Println("in stabilize after notify returned")
-    time.Sleep(3* time.Second)
+    time.Sleep(5 * time.Second)
     timeVar := time.Now().Local()
 	fmt.Println("---This is the Stabilize---",timeVar.Format("20060102150405"))
 	fmt.Println("Successor is : ",successor.Id)
@@ -193,7 +193,7 @@ func CheckPredecessor() error{
 	}
 
 
-    time.Sleep(3* time.Second)
+    time.Sleep(5* time.Second)
     timeVar := time.Now().Local()
 	fmt.Println("---This is CheckPredecessor---",timeVar.Format("20060102150405"))
 return nil
@@ -1459,10 +1459,8 @@ func startServer() {
 
           
 //   go func() {
-	// var a int
- //    var b int
- //    a=0    
- //     if (config_obj.ServerID !=13) {
+	    
+     // if (config_obj.ServerID !=13) {
 //    		c1, errr := jsonrpc.Dial(config_obj.Protocol, knownnode.IpAddress +":"+strconv.Itoa(knownnode.Port))
 
   //  	if errr != nil {
@@ -1470,7 +1468,7 @@ func startServer() {
     //		fmt.Println("Error in Join RPC")
     //	}
       //  rpc_call := c1.Go("Dict.Join",a,&b,nil)
-         // Join(a,&b);
+         // Join();
 
 		 //<-rpc_call.Done
 
@@ -1480,7 +1478,7 @@ func startServer() {
 		    
  
     //     defer wg.Done()
-		      // println("in for loop")
+		      println("in for loop")
         	conn,err  = listener.Accept()
         	if err != nil {
         		// println("Connection is ",conn)
@@ -1503,6 +1501,7 @@ func main() {
     go func() {
         defer wg.Done()
     startServer()
+
     }()
 
     var input string
