@@ -98,6 +98,7 @@ func Join(){
     config_obj.Predecessor=*dummy
     predecessor=*dummy
     c, _ := jsonrpc.Dial(config_obj.Protocol, knownnode.IpAddress +":"+strconv.Itoa(knownnode.Port))
+	defer c.Close()
 	      //var reply1 string
           var id int
           id=config_obj.ServerID
@@ -113,7 +114,7 @@ func Join(){
 }
 func Stabilize() error{
 	 c, _ := jsonrpc.Dial(config_obj.Protocol, successor.IpAddress +":"+strconv.Itoa(successor.Port))
-    
+    defer c.Close()
 
     a:=0
     var pred Nodeid
@@ -129,10 +130,12 @@ func Stabilize() error{
          }
          fmt.Println("in stabilize before calling notify")
         c1, e1 := jsonrpc.Dial(config_obj.Protocol, successor.IpAddress +":"+strconv.Itoa(successor.Port))
-        if e1 != nil {
+        
+		if e1 != nil {
         	fmt.Println("Error while calling RPC")
         	panic(e1)
         }
+		defer c1.Close()
 
         rpc_call1 := c1.Go("Dict.Notify",&selfnode,&a,nil)
 
@@ -394,7 +397,7 @@ func find_successor(id int) Nodeid {
 		var output Nodeid
 
 		 c, err := jsonrpc.Dial(config_obj.Protocol, nextnode.IpAddress +":"+strconv.Itoa(nextnode.Port))
-	
+		defer c.Close()
 
 		 rpc_call := c.Go("Dict.Find_successor",id,&output,nil)		
 		  <-rpc_call.Done
@@ -437,6 +440,7 @@ func closest_preceding_node(id int) Nodeid {
 //     	//call a known node
 //     	var my_successor int
 //     	c, err := jsonrpc.Dial("tcp","192.168.0.102:8222") //30th server
+		
 //     	fmt.Println()
 //     	rpc_call := c.Go("Dict.Find_successor",&config_obj.ServerID,&my_successor,nil)		
 // 					<-rpc_call.Done
@@ -568,19 +572,12 @@ This function finds the successor of id
 // }
 //Search for triplet in the file, send appropriate reply
 func (t *Dict) Lookup(input_objPtr *Params_struct,reply *string) error {
-	
-	// var f interface{}
-	// //Unmarshal in map of string to interface
-	// err := json.Unmarshal([]byte(*args), &f)
-	// if err != nil {
-	// 	log.Fatal("error:",err);
-	// }
+
 	var key string;var rel string;var id int
 	key = (*input_objPtr).Key
 	rel = (*input_objPtr).Rel
-	
 
-
+	//Get hash value for data item
 	hashValue := getHashValueForItem(key, rel)
 	//Find the successor node
 	succ_node := find_successor(hashValue)
@@ -593,7 +590,8 @@ func (t *Dict) Lookup(input_objPtr *Params_struct,reply *string) error {
 		// succ_node := find_successor(hashValue)
 		fmt.Println("Successor node is ",succ_node.Port)
 		c, err := jsonrpc.Dial(config_obj.Protocol, succ_node.IpAddress +":"+strconv.Itoa(succ_node.Port))
-	      var reply1 string
+	      defer c.Close()
+		  var reply1 string
 
 		 rpc_call := c.Go("Dict.Lookup",input_objPtr,&reply1,nil)		
 		  <-rpc_call.Done
@@ -667,7 +665,8 @@ func (t *Dict) Insert(input_objPtr *Params_struct,reply *string) error {
 		succ_node := find_successor(hashValue)
 		fmt.Println("Successor node is ",succ_node.Port)
 		c, err := jsonrpc.Dial(config_obj.Protocol, succ_node.IpAddress +":"+strconv.Itoa(succ_node.Port))
-	      var reply1 string
+	      defer c.Close()
+		  var reply1 string
 
 		 rpc_call := c.Go("Dict.Insert",input_objPtr,&reply1,nil)		
 		  <-rpc_call.Done
@@ -815,7 +814,7 @@ func (t* Dict) InsertOrUpdate(input_objPtr *Params_struct,reply *string) error{
 		fmt.Println("Successor node is ",succ_node.Port)
 		c, err := jsonrpc.Dial(config_obj.Protocol, succ_node.IpAddress +":"+strconv.Itoa(succ_node.Port))
 	      var reply1 string
-
+		defer c.Close()
 		 rpc_call := c.Go("Dict.InsertOrUpdate",input_objPtr,&reply1,nil)		
 		  <-rpc_call.Done
 
@@ -934,7 +933,7 @@ func (t *Dict) Delete(input_objPtr *Params_struct, reply *string) error {
 		fmt.Println("Successor node is ",succ_node.Port)
 		c, err := jsonrpc.Dial(config_obj.Protocol, succ_node.IpAddress +":"+strconv.Itoa(succ_node.Port))
 	      var reply1 string
-
+		defer c.Close()
 		 rpc_call := c.Go("Dict.Delete",input_objPtr,&reply1,nil)		
 		  <-rpc_call.Done
 
@@ -1101,7 +1100,7 @@ func (t *Dict) ListKeys(input_objPtr *Params_struct, reply *string) error {
 
 			c, _ := jsonrpc.Dial(config_obj.Protocol, succ_node.IpAddress +":"+strconv.Itoa(succ_node.Port))
 		       var reply1 string
-		     
+		     defer c.Close()
 
 			 rpc_call := c.Go("Dict.ListKeys",input_objPtr,&reply1,nil)		
 			  <-rpc_call.Done
@@ -1146,7 +1145,7 @@ func (t *Dict) ListKeys(input_objPtr *Params_struct, reply *string) error {
 			fmt.Println("Successor node is ",succ_node.Port)
 			c, _ := jsonrpc.Dial(config_obj.Protocol, succ_node.IpAddress +":"+strconv.Itoa(succ_node.Port))
 		       var reply1 string
-		  
+		  defer c.Close()
 
 			 rpc_call := c.Go("Dict.ListKeys",input_objPtr,&reply1,nil)		
 			  <-rpc_call.Done
@@ -1277,7 +1276,7 @@ func (t *Dict) ListIDs(input_objPtr *Params_struct, reply *string) error {
 
 			c, _ := jsonrpc.Dial(config_obj.Protocol, succ_node.IpAddress +":"+strconv.Itoa(succ_node.Port))
 		       var reply1 string
-		     
+		     defer c.Close()
 
 			 rpc_call := c.Go("Dict.ListIDs",input_objPtr,&reply1,nil)		
 			  <-rpc_call.Done
@@ -1321,7 +1320,7 @@ func (t *Dict) ListIDs(input_objPtr *Params_struct, reply *string) error {
 			fmt.Println("Successor node is ",succ_node.Port)
 			c, _ := jsonrpc.Dial(config_obj.Protocol, succ_node.IpAddress +":"+strconv.Itoa(succ_node.Port))
 		       var reply1 string
-		  
+		  defer c.Close()
 
 			 rpc_call := c.Go("Dict.ListIDs",input_objPtr,&reply1,nil)		
 			  <-rpc_call.Done
@@ -1395,6 +1394,7 @@ file, err := os.Open(filename)
 			if err1 != nil {
 		 			log.Fatal("Dict error:",err);
 						 }		
+			defer c.Close()
 	      var reply1 string
 
 		 rpc_call := c.Go("Dict.InsertOnShutdown",&file_obj,&reply1,nil)		
