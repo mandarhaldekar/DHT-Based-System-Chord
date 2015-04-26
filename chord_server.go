@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"sync"
 	"time"
+	"regexp"
 )
 
 
@@ -86,7 +87,16 @@ func getHashValueForItem(s1 string,s2 string ) int{
 	
 }
 
-
+func removebackslash(s string) string {
+    var tempstr string
+        reg, err := regexp.Compile("\\\\")
+        if err != nil {
+                log.Fatal(err)
+        }
+        tempstr = reg.ReplaceAllString(s,"")
+        
+    return tempstr
+}
 
 func Join(){
 	
@@ -375,6 +385,7 @@ func fix_fingers() {
 	time.Sleep(5* time.Second)
     timeVar := time.Now().Local()
 	fmt.Println("---This is fix_fingers---",timeVar.Format("20060102150405"))
+
 
 }
 func find_successor(id int) Nodeid {
@@ -722,7 +733,7 @@ func (t *Dict) Lookup(input_objPtr *Params_struct,reply *string) error {
 		  <-rpc_call.Done
 
 		  fmt.Println("If conf reply is : ",reply1)
-		  *reply=reply1
+		  *reply=removebackslash(reply1)
 		 // println("output is : ");println(output.IpAddress);println(output.Port)
 		 if err != nil {
 		 	log.Fatal("Dict error:",err);
@@ -751,7 +762,7 @@ func (t *Dict) Lookup(input_objPtr *Params_struct,reply *string) error {
 								Error: "null"}		
 			}
 			b,_ := json.Marshal(resp_obj)
-			*reply = string(b)  //Set the reply
+			*reply = removebackslash(string(b))  //Set the reply
 	}
 	// input_obj := extract_params(f,&id)
 	// key = input_obj.Key
@@ -1019,7 +1030,7 @@ func (t *Dict) Insert(input_objPtr *Params_struct,reply *string) error {
 		  <-rpc_call.Done
 
 		  fmt.Println("If conf reply is : ",reply1)
-		  *reply=reply1
+		  *reply=removebackslash(reply1)
 		 // println("output is : ");println(output.IpAddress);println(output.Port)
 		 if err != nil {
 		 	log.Fatal("Dict error:",err);
@@ -1033,11 +1044,11 @@ func (t *Dict) Insert(input_objPtr *Params_struct,reply *string) error {
 		search_in_file(filename,key,rel,&flag,&str_obj)
 		var resp_obj *Response_message
 		if flag == 1 {
-			fmt.Println("Record already exits")
+			fmt.Println("Record already exists")
 			resp_obj = &Response_message{
 								Result:"false",
 								Id: id,
-								Error: "Record already exits"}		
+								Error: "Record already exists"}		
 		} else {
 			write_to_file(*input_objPtr,&write_file_reply)
 			if write_file_reply == 0 {
@@ -1057,7 +1068,7 @@ func (t *Dict) Insert(input_objPtr *Params_struct,reply *string) error {
 		}
 
 		b,_:= json.Marshal(resp_obj)
-		*reply = string(b)  //Set the reply
+		*reply = removebackslash(string(b))  //Set the reply
 	}
 	fmt.Println("Reply sent is : ",*reply)
 	// println("Done with the call..\n")
@@ -1094,11 +1105,11 @@ func (t *Dict) InsertOnShutdown(input_objPtr *Params_struct,reply *string) error
 		search_in_file(filename,key,rel,&flag,&str_obj)
 		var resp_obj *Response_message
 		if flag == 1 {
-			fmt.Println("Record already exits")
+			fmt.Println("Record already exists")
 			resp_obj = &Response_message{
 								Result:"false",
 								Id: id,
-								Error: "Record already exits"}		
+								Error: "Record already exists"}		
 		} else {
 			write_to_file(*input_objPtr,&write_file_reply)
 			if write_file_reply == 0 {
@@ -1118,7 +1129,7 @@ func (t *Dict) InsertOnShutdown(input_objPtr *Params_struct,reply *string) error
 	}
 
 		b,_:= json.Marshal(resp_obj)
-		*reply = string(b)  //Set the reply
+		*reply = removebackslash(string(b))  //Set the reply
 	
 	fmt.Println("Reply sent is : ",*reply)
 	// println("Done with the call..\n")
@@ -1458,14 +1469,14 @@ func (t *Dict) ListKeys(input_objPtr *Params_struct, reply *string) error {
 			  		( *reply) += list_of_keys_reply +","+reply1
 			  }
 			
-			 *reply = constructListReply(*reply)
+			 *reply = removebackslash(constructListReply(*reply))
 			 //TO-DO This is final reply to be sent. Construct reply here
 			  // fmt.Println("Reply string after RPC to next node is : ",*reply)
 
 		} else {
 
 			*reply = list_of_keys_reply
-			*reply = constructListReply(*reply)
+			*reply = removebackslash(constructListReply(*reply))
 			//TO-DO This is final reply to be sent. Construct reply here
 			
 		}
@@ -1635,13 +1646,13 @@ func (t *Dict) ListIDs(input_objPtr *Params_struct, reply *string) error {
 			  		( *reply) += list_of_ids_reply +","+reply1
 			  }
 			 //TO-DO This is final reply to be sent. Construct reply here
-			 *reply = constructListReply(*reply)
+			 *reply = removebackslash( constructListReply(*reply))
 			  // fmt.Println("Reply string after RPC to next node is : ",*reply)
 
 		} else {
 
 			*reply = list_of_ids_reply
-			*reply = constructListReply(*reply)
+			*reply =removebackslash(constructListReply(*reply))
 			//TO-DO This is final reply to be sent. Construct reply here
 			
 		}
@@ -1807,7 +1818,7 @@ func startServer() {
           
 //   go func() {
 	    
-     // if (config_obj.ServerID !=13) {
+      //if (config_obj.ServerID !=13) {
 //    		c1, errr := jsonrpc.Dial(config_obj.Protocol, knownnode.IpAddress +":"+strconv.Itoa(knownnode.Port))
 
   //  	if errr != nil {
@@ -1815,7 +1826,7 @@ func startServer() {
     //		fmt.Println("Error in Join RPC")
     //	}
       //  rpc_call := c1.Go("Dict.Join",a,&b,nil)
-         // Join();
+       //   Join();
 
 		 //<-rpc_call.Done
 
@@ -1891,6 +1902,7 @@ func main() {
       fix_fingers()
   			}
     	}()
+
     wg.Wait()
 
 	
