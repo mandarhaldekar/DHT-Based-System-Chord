@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"hash/fnv"
 	"math"
-	// "runtime"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -93,8 +93,8 @@ func Join(a int, b *int) error{
 	var dummy *Nodeid
 	dummy = &Nodeid{
 				IpAddress:"",
-				Port:0,
-				Id:0}
+				Port:-1,
+				Id:-1}
     config_obj.Predecessor=*dummy
     predecessor=*dummy
     c, _ := jsonrpc.Dial(config_obj.Protocol, knownnode.IpAddress +":"+strconv.Itoa(knownnode.Port))
@@ -115,42 +115,60 @@ func Join(a int, b *int) error{
 
 	return nil
 }
-func (t* Dict) Stabilize(a int, reply *string) error{
+func Stabilize() error{
 	 c, _ := jsonrpc.Dial(config_obj.Protocol, successor.IpAddress +":"+strconv.Itoa(successor.Port))
     
-    a=0
+
+    a:=0
     var pred Nodeid
-		 rpc_call := c.Go("Dict.AskPredecessor",a,&pred,nil)
+		 rpc_call := c.Go("Dict.AskPredecessor",&a,&pred,nil)
 		 <-rpc_call.Done
-		 if (pred.Id > config_obj.ServerID && pred.Id < successor.Id){
+		 if ((pred.Id > config_obj.ServerID && pred.Id < successor.Id) || (successor.Id==selfnode.Id)){
+		 	fmt.Println("In If condition to update Successor")
 		 	config_obj.Successor=pred
 		 	successor=pred
+		 	fmt.Println("Updated successor : ",successor.Id)
+
 
          }
+         fmt.Println("in stabilize before calling notify")
         c1, _ := jsonrpc.Dial(config_obj.Protocol, successor.IpAddress +":"+strconv.Itoa(successor.Port))
 
-        rpc_call1 := c1.Go("Dict.Notify",a,&a,nil)
+        rpc_call1 := c1.Go("Dict.Notify",&selfnode,&a,nil)
 
 		 <-rpc_call1.Done
 
+fmt.Println("in stabilize after notify returned")
+    time.Sleep(3* time.Second)
+    timeVar := time.Now().Local()
+	fmt.Println("---This is the Stabilize---",timeVar.Format("20060102150405"))
+	fmt.Println("Successor is : ",successor.Id)
+	fmt.Println("Predecessor is : ",predecessor.Id)
+fmt.Println("leaving stabilize")
 return nil
 }
 
 
 func (t* Dict) Notify(newnode *Nodeid,b *int) error{
+	
+	fmt.Println("In Notify from ID : ",(*newnode).Id)
 	var dummy *Nodeid
 	dummy = &Nodeid{
 				IpAddress:"",
-				Port:0,
-				Id:0}
-if (predecessor==*dummy ||  (newnode.Id > predecessor.Id && newnode.Id <config_obj.ServerID)){
-	config_obj.Predecessor=*newnode
-	predecessor=*newnode
-}
+				Port:-1,
+				Id:-1}
+
+				
+	 if ((predecessor.Id==(*dummy).Id ) ||  ((*newnode).Id > predecessor.Id && (*newnode).Id <config_obj.ServerID) || (predecessor.Id==selfnode.Id))  {
+// if ((*newnode).Id > predecessor.Id && (*newnode).Id <config_obj.ServerID)  {
+		config_obj.Predecessor=*newnode
+		predecessor=*newnode
+		fmt.Println("I changed my Predecessor to : ",(*newnode).Id)
+	}
 
 
-
-return nil
+	*b = 0
+	return nil
 }
 
 
@@ -160,17 +178,24 @@ func (t* Dict) AskPredecessor(a int,prednode *Nodeid) error{
 return nil
 }
 
-func (t* Dict) CheckPredecessor(a int,b *int) error{
-_, err := net.DialTimeout("tcp", predecessor.IpAddress +":"+strconv.Itoa(predecessor.Port), time.Duration(3)*time.Second)
-var dummy *Nodeid
-	dummy = &Nodeid{
-				IpAddress:"",
-				Port:0,
-				Id:0}			
-if err != nil {
-config_obj.Predecessor=*dummy
-predecessor=*dummy
-}
+func CheckPredecessor() error{
+	_, err := net.DialTimeout("tcp", predecessor.IpAddress +":"+strconv.Itoa(predecessor.Port), time.Duration(3)*time.Second)
+	var dummy *Nodeid
+		dummy = &Nodeid{
+					IpAddress:"",
+					Port:-1,
+					Id:-1}			
+	if err != nil {
+	config_obj.Predecessor=(*dummy)
+	predecessor=(*dummy)
+
+
+	}
+
+
+    time.Sleep(3* time.Second)
+    timeVar := time.Now().Local()
+	fmt.Println("---This is CheckPredecessor---",timeVar.Format("20060102150405"))
 return nil
 }
 //This function read server configuration from a file and stores informaton is Config_file structure
@@ -356,15 +381,15 @@ func find_successor(id int) Nodeid {
 	}else{
 		var nextnode Nodeid
 		nextnode = closest_preceding_node(id)
-		// if (nextnode==selfnode){
-		// 	if(id< config_obj.ServerID){
-		// 		return selfnode
-		// 	}else{
+		if (nextnode==selfnode){
+			if(id< config_obj.ServerID){
+				return selfnode
+			}else{
 		
-		// 	// return selfnode
-		// 	 return successor
-		// 	}
-		// }
+			// return selfnode
+			 return successor
+			}
+		}
 		// println("Next node: ");print(nextnode.IpAddress);println(nextnode.Port);println(nextnode.Id)
 		var output Nodeid
 
@@ -688,6 +713,67 @@ func (t *Dict) Insert(input_objPtr *Params_struct,reply *string) error {
 		b,_:= json.Marshal(resp_obj)
 		*reply = string(b)  //Set the reply
 	}
+	fmt.Println("Reply sent is : ",*reply)
+	// println("Done with the call..\n")
+	return nil
+
+}
+
+
+//This is to get data from predecessor when it is about to leave
+func (t *Dict) InsertOnShutdown(input_objPtr *Params_struct,reply *string) error {
+
+	// var f interface{}
+	var write_file_reply int
+	//Unmarshal in map of string to interface
+	// err := json.Unmarshal([]byte(*args), &f)
+	// if err != nil {
+		// log.Fatal("error:",err);
+	// }
+	
+	var key string;var rel string;var id int
+	key = (*input_objPtr).Key
+	rel = (*input_objPtr).Rel
+	// input_obj := extract_params(f,&id)
+	// key = input_obj.Key
+	// rel = input_obj.Rel
+	
+	
+	//Check if current node is successor node. If not then call RPC to insert at successor node
+	  //Successor is current node, insert here
+	//	fmt.Println("In else")
+		var str_obj string
+		flag := 0	
+
+		search_in_file(filename,key,rel,&flag,&str_obj)
+		var resp_obj *Response_message
+		if flag == 1 {
+			fmt.Println("Record already exits")
+			resp_obj = &Response_message{
+								Result:"false",
+								Id: id,
+								Error: "Record already exits"}		
+		} else {
+			write_to_file(*input_objPtr,&write_file_reply)
+			if write_file_reply == 0 {
+			
+				//Construct a reply message
+				resp_obj = &Response_message{
+								Result:"true",
+								Id: id,
+								Error: "null"}		
+			} else {
+				//Construct a reply message
+				resp_obj = &Response_message{
+								Result:"false",
+								Id: id,
+								Error: "Error writing to file"}		
+			}	
+	}
+
+		b,_:= json.Marshal(resp_obj)
+		*reply = string(b)  //Set the reply
+	
 	fmt.Println("Reply sent is : ",*reply)
 	// println("Done with the call..\n")
 	return nil
@@ -1262,9 +1348,72 @@ func (t *Dict) ListIDs(input_objPtr *Params_struct, reply *string) error {
 	
 	return nil
 }
-//This function closes the existing connection, stops the listener and then exit the server program
+// //This function closes the existing connection, stops the listener and then exit the server program
+// func (t *Dict) Shutdown(input_objPtr *Params_struct,reply *string) error {
+	
+// 	fmt.Println("\nClosing the server!!")
+// 	*reply = "shutdown successful!!"
+// 	conn.Close()
+// 	listener.Close()
+// 	os.Exit(0)
+// 	return nil
+// }
+
+
 func (t *Dict) Shutdown(input_objPtr *Params_struct,reply *string) error {
 	
+
+ var str_obj string
+			// flag := 0	
+			// search_in_file(filename,key,rel,&flag,&str_obj)
+			
+
+file, err := os.Open(filename)
+
+    if err != nil {
+       panic(err.Error())
+    }
+
+    defer file.Close()
+
+    reader := bufio.NewReader(file)
+    scanner := bufio.NewScanner(reader)
+
+    scanner.Split(bufio.ScanLines)
+	 var file_obj Params_struct
+	// var str_obj string
+	// *flag = 0
+     for scanner.Scan() {
+		//unmarshal into Params_struct
+		str_obj = scanner.Text()
+		// fmt.Println("Json String is",*str_obj)
+		err = json.Unmarshal([]byte(str_obj),&file_obj)
+		if err == nil{
+			//insert into successor node
+			fmt.Println("Passing data to the Successor",successor.Port)
+			c, err1 := jsonrpc.Dial(config_obj.Protocol, successor.IpAddress +":"+strconv.Itoa(successor.Port))
+			if err1 != nil {
+		 			log.Fatal("Dict error:",err);
+						 }		
+	      var reply1 string
+
+		 rpc_call := c.Go("Dict.InsertOnShutdown",&file_obj,&reply1,nil)		
+		  <-rpc_call.Done
+
+		  fmt.Println("If conf reply is : ",reply1)
+		 
+		 // println("output is : ");println(output.IpAddress);println(output.Port)
+		 		
+		}else {
+			panic(err.Error())
+		}	
+		 
+		
+		//fmt.Println(scanner.Text())
+    }
+
+
+
 	fmt.Println("\nClosing the server!!")
 	*reply = "shutdown successful!!"
 	conn.Close()
@@ -1272,6 +1421,8 @@ func (t *Dict) Shutdown(input_objPtr *Params_struct,reply *string) error {
 	os.Exit(0)
 	return nil
 }
+
+
 
 
 var listener net.Listener //this holds the Listener object
@@ -1304,13 +1455,14 @@ func startServer() {
         
     }
     println("\nAccepting connections...\n")
-    var a int
-    var b int
-    a=0    
+    
 
           
 //   go func() {
-    // if (config_obj.ServerID !=13) {
+	// var a int
+ //    var b int
+ //    a=0    
+ //     if (config_obj.ServerID !=13) {
 //    		c1, errr := jsonrpc.Dial(config_obj.Protocol, knownnode.IpAddress +":"+strconv.Itoa(knownnode.Port))
 
   //  	if errr != nil {
@@ -1318,7 +1470,7 @@ func startServer() {
     //		fmt.Println("Error in Join RPC")
     //	}
       //  rpc_call := c1.Go("Dict.Join",a,&b,nil)
-        // Join(a,&b);
+         // Join(a,&b);
 
 		 //<-rpc_call.Done
 
@@ -1345,9 +1497,9 @@ func startServer() {
 }
 
 func main() {
-	// runtime.GOMAXPROCS(2)
+	runtime.GOMAXPROCS(8)
 	var wg sync.WaitGroup
-    wg.Add(2)
+    wg.Add(4)
     go func() {
         defer wg.Done()
     startServer()
@@ -1363,6 +1515,27 @@ func main() {
       time.Sleep(1000* time.Microsecond)
       fix_fingers()
     }()
+
+    go func() {
+    	defer wg.Done()
+    	for{
+    	
+    	println("\nStabilize executing")        
+      time.Sleep(1000* time.Microsecond)
+      Stabilize()
+  			}
+    	}()
+
+    go func() {
+    	defer wg.Done()
+    	for{
+    	
+    	println("\nCheckPredecessor executing")        
+      time.Sleep(1000* time.Microsecond)
+      CheckPredecessor()
+  			}
+    	}()
+
     wg.Wait()
 
 	
