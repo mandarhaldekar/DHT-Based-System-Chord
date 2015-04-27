@@ -122,6 +122,7 @@ func Join(){
 
 	
 }
+
 func Stabilize() error{
 	 c, _ := jsonrpc.Dial(config_obj.Protocol, successor.IpAddress +":"+strconv.Itoa(successor.Port))
     defer c.Close()
@@ -468,11 +469,182 @@ func closest_preceding_node(id int) Nodeid {
 
 // }
 //Write the object to persisten storage container
+
+
+//This is structure uses at Value field for triplet
+type ValueType_struct struct {
+	Content interface{}
+	Size string
+	Created string
+	Modified string
+	Accessed string
+	Permission string
+	
+}
+
+
+/** This function takes triplet(containing ky,rel,Value) from the structure and builds triplet with Value containing the above fields
+*/
+func buildValueJSONObject(file_obj Params_struct) string {
+
+	val := file_obj.Value
+	// fmt.Println("Value received is ",val.(string))
+	t := time.Now()
+	
+	var s string = t.Format("01/02/2006,15:04:05")
+
+	var valueObj *ValueType_struct
+	valueObj = &ValueType_struct{
+								Content:val,
+								Size:"3kb",
+								Created: s,
+								Accessed: s,
+								Modified: s,
+								Permission: "RW"}		
+
+	
+	file_obj.Value = *valueObj
+	b,_:=json.Marshal(file_obj)
+	fmt.Println("Value JSON String is : ",string(b))
+
+	return string(b)
+
+
+}
+
+//This function extracts contents of the value and returns Param Struct object
+// with only three things key, rel, value (no timestamp, size, permissions)
+func extractContentIntoValue(file_obj Params_struct) Params_struct{
+
+	val := file_obj.Value
+
+	var contentVal interface{}
+	
+    m1 := val.(map[string]interface{})
+    // println("Successor is :")
+    for k, v := range m1 {
+    	 switch v.(type) {
+
+		case interface{}:
+			if k == "Content" {
+				contentVal = v
+			}
+   
+			break 	     	 	
+    	case string:
+    		//Always update Accessed
+    		
+
+	    default:
+	    	fmt.Println("In Default")
+	    	break
+
+	    }
+    }
+    file_obj.Value = contentVal
+    return file_obj
+
+
+
+}
+
+//This function updates input param structure object as per the fields passed to it
+// field: If "Modified", modify the Modified field
+//fieldContent : If "Content", modify content from the input "content" parameter
+//*str_obj_record is the json string representation of the modified input object
+func updateRecord(file_obj Params_struct,field string,fieldContent string,str_obj_record *string,content interface{}) Params_struct{
+
+	fmt.Println(file_obj.Value)
+	val := file_obj.Value
+	
+	
+	t := time.Now()
+	
+	s := t.Format("01/02/2006,15:04:05")
+	var accessed, modified, created,permission,size string
+	var contentVal interface{}
+	// var modValue interface{}
+    m1 := val.(map[string]interface{})
+    // println("Successor is :")
+    for k, v := range m1 {
+    	 switch v.(type) {
+
+    	 
+    	     	 	
+		case interface{}:
+			if k == "Content" {
+				if fieldContent != "Content"{
+				contentVal = v
+				}else {
+					contentVal = content
+				}
+
+			}else if k=="Accessed" {  //By Default modified	
+    			println("\nAccessed date is ");print(v.(string))
+    			
+
+
+    			accessed = s
+    			
+
+
+    		} else if k=="Modified"{
+    			if field != "Modified" {	
+    				println("\nModified date is ");print(v.(string))
+    				modified = v.(string)
+    			}else {    //Modify only if Modifiled is specified in the field
+    				modified = s
+    			} 
+
+    		}else if k=="Created"{	
+    			println("\nModified date is ");print(v.(string))
+    			created = v.(string)
+
+    		}else if k=="Size"{	
+    			
+    		size = v.(string)
+    		}else if k=="Permission" {	
+    			
+    			permission = v.(string)
+    		}
+   
+			break 	     	 	
+    	case string:
+    		//Always update Accessed
+    		
+
+	    default:
+	    	fmt.Println("In Default")
+	    	break
+
+	    }
+    }
+
+    var valueObj *ValueType_struct
+	valueObj = &ValueType_struct{
+								Content:contentVal,
+								Size:size,
+								Created: created,
+								Accessed: accessed,
+								Modified: modified,
+								Permission: permission}	
+
+	
+	file_obj.Value = *valueObj
+	b,_:= json.Marshal(file_obj)
+	*str_obj_record = string(b)
+	fmt.Println("Modified string is ",string(b))
+	return file_obj								
+
+} 
+
+//It takes file_obj in basic form (i.e key, rel, value) and builds
+//Json object with timestamp, permission etc and writes to persistent storage container
 func write_to_file(file_obj Params_struct,reply *int) {
 
 	*reply = 1;
-
-	b, err := json.Marshal(file_obj)	
+	valueStr := buildValueJSONObject(file_obj)
+	// b, err := json.Marshal(file_obj)	
 	//Create new file if does not exist	
 	if _, err := os.Stat(filename); err != nil {
 		_, ferr := os.Create(filename)
@@ -488,7 +660,7 @@ func write_to_file(file_obj Params_struct,reply *int) {
 	}
 	defer file.Close()
 
-	if _, err = file.WriteString(string(b)+"\n"); err != nil {
+	if _, err = file.WriteString(valueStr+"\n"); err != nil {
 		*reply = 1; //Failure
 		panic(err)
 	 } else {
@@ -496,6 +668,7 @@ func write_to_file(file_obj Params_struct,reply *int) {
 		*reply = 0; //Success
 	 }
 }
+
 //This function will extract key, relation and value from interface and store it in Param_struct object
 func extract_params(f interface{},id *int) Params_struct {
 
@@ -526,9 +699,10 @@ func extract_params(f interface{},id *int) Params_struct {
 }
 //This function will search the file to see if triplet is preset matching given key and relation
 //It sets flag = 1 if the record is found, else set it to zero
-func search_in_file(filestring string,key string,rel string,flag *int,str_obj *string) error {
+func search_in_file(filestring string,key string,rel string,flag *int,str_obj_record *string) error {
 
 	file, err := os.Open(filestring)
+	list_of_file_obj := make([]Params_struct,0)
 
     if err != nil {
        panic(err.Error())
@@ -540,27 +714,35 @@ func search_in_file(filestring string,key string,rel string,flag *int,str_obj *s
     scanner := bufio.NewScanner(reader)
 
     scanner.Split(bufio.ScanLines)
-	var file_obj Params_struct
+	
 	// var str_obj string
 	*flag = 0
      for scanner.Scan() {
 		//unmarshal into Params_struct
-		*str_obj = scanner.Text()
+		var file_obj Params_struct
+		str_obj := scanner.Text()
 		// fmt.Println("Json String is",*str_obj)
-		err = json.Unmarshal([]byte(*str_obj),&file_obj)
+		err = json.Unmarshal([]byte(str_obj),&file_obj)
 		if err == nil{
 			if file_obj.Key == key && file_obj.Rel == rel {
 				fmt.Println("\nFound the record")
+				
+				//Modify Accessed field
+				var temp interface{} //No need for object modification, Pass empty content
+				file_obj = updateRecord(file_obj,"Accessed","",str_obj_record,temp)
 				*flag = 1
-				break	
+				// break	
 			}
 			
 		} else {
 			panic(err.Error())
 		}
+		list_of_file_obj = append(list_of_file_obj,file_obj)
 		
 		//fmt.Println(scanner.Text())
     }
+
+    writeListOfObjectsToFile(list_of_file_obj)
 
 	return nil
 }
@@ -1111,6 +1293,8 @@ func (t *Dict) InsertOnShutdown(input_objPtr *Params_struct,reply *string) error
 								Id: id,
 								Error: "Record already exists"}		
 		} else {
+			//Extract Content and store in it Value
+			*input_objPtr = extractContentIntoValue(*input_objPtr)
 			write_to_file(*input_objPtr,&write_file_reply)
 			if write_file_reply == 0 {
 			
@@ -1142,19 +1326,11 @@ func (t *Dict) InsertOnShutdown(input_objPtr *Params_struct,reply *string) error
 //In the end, write entire list back to the file
 func (t* Dict) InsertOrUpdate(input_objPtr *Params_struct,reply *string) error{
 	
-	// var f interface{}
-	//Unmarshal in map of string to interface
-	// err := json.Unmarshal([]byte(*args), &f)
-	// if err != nil {
-	// 	log.Fatal("error:",err);
-	// }
+	
 	var key string;var rel string
 	key = (*input_objPtr).Key
 	rel = (*input_objPtr).Rel
-	// input_obj := extract_params(f,&id)
-	// key = input_obj.Key
-	// rel = input_obj.Rel
-
+	
 
 	hashValue := getHashValueForItem(key, rel)
 
@@ -1198,19 +1374,23 @@ func (t* Dict) InsertOrUpdate(input_objPtr *Params_struct,reply *string) error{
 		    scanner := bufio.NewScanner(reader)
 
 		    scanner.Split(bufio.ScanLines)
-			var file_obj Params_struct
+			
 			var str_obj string
 			flag := 0
 			list_of_file_obj := make([]Params_struct,0)
 
 		    for scanner.Scan() {
 				//unmarshal into Params_struct
+				var file_obj Params_struct
 				str_obj = scanner.Text()
 				err = json.Unmarshal([]byte(str_obj),&file_obj)
 				if err == nil{
 					if file_obj.Key == key && file_obj.Rel == rel {
 						fmt.Println("\nFound the record")
-						file_obj.Value = (*input_objPtr).Value
+						//Content to be modified, pass new content
+						file_obj = updateRecord(file_obj,"Modified","Content",&str_obj,(*input_objPtr).Value)
+						
+						fmt.Println(file_obj.Value)
 						flag = 1	
 					}
 					
@@ -1233,16 +1413,7 @@ func (t* Dict) InsertOrUpdate(input_objPtr *Params_struct,reply *string) error{
 		    	
 		    } else {
 		   		fmt.Println("Updating the record")
-		    	file, _ := os.OpenFile(filename, os.O_WRONLY|os.O_TRUNC,0600)
-		    	
-		    	for _, v := range list_of_file_obj {
-		 			b, err := json.Marshal(v)
-		 			if _, err = file.WriteString(string(b)+"\n"); err != nil {
-					panic(err)
-			 		}
-
-				}
-				file.Close()
+				writeListOfObjectsToFile(list_of_file_obj)
 		  	  }
   	} //else of successor
     
@@ -1256,25 +1427,11 @@ func (t* Dict) InsertOrUpdate(input_objPtr *Params_struct,reply *string) error{
 
 func (t *Dict) Delete(input_objPtr *Params_struct, reply *string) error {
 	
-	// var f interface{}
-	//Unmarshal in map of string to interface
-	// err := json.Unmarshal([]byte(*args), &f)
-	// if err != nil {
-	// 	log.Fatal("error:",err);
-	// }
+	
 	var key string;var rel string;
 	key = (*input_objPtr).Key
 	rel = (*input_objPtr).Rel
-	// input_obj := extract_params(f,&id)
-	// key = input_obj.Key
-	// rel = input_obj.Rel
-
-
-	// input_obj := extract_params(f,&id)
-	// key = input_obj.Key
-	// rel = input_obj.Rel
-
-
+	
 	hashValue := getHashValueForItem(key, rel)
 
 	//Find the successor node
@@ -1369,29 +1526,38 @@ func getListOfKeys() string {
        panic(err.Error())
      }
     
-
+    list_of_file_obj := make([]Params_struct,0)
     reader := bufio.NewReader(file)
     scanner := bufio.NewScanner(reader)
 
     scanner.Split(bufio.ScanLines)
-	var file_obj Params_struct
+	
 	var str_obj string
 
     for scanner.Scan() {
+    	var file_obj Params_struct
 		//unmarshal into Params_struct
 		str_obj = scanner.Text()
 		err = json.Unmarshal([]byte(str_obj),&file_obj)
 		if err == nil {
 			//Add to map
 			key_rel_map[file_obj.Key] = file_obj.Rel
+			//Modify Accessed field
+			var temp interface{} //No need for object modification, Pass empty content
+			file_obj = updateRecord(file_obj,"Accessed","",&str_obj,temp)
+
 			
 		} else {
 			panic(err.Error())
 		}
-		
+		list_of_file_obj = append(list_of_file_obj,file_obj)
 		//fmt.Println(scanner.Text())
     }
     file.Close()
+
+    //Modify Accessed
+    writeListOfObjectsToFile(list_of_file_obj)
+
     list_of_keys := make([]string,0)
     for k, _ := range key_rel_map {
     	list_of_keys = append(list_of_keys,k)
@@ -1546,30 +1712,39 @@ func getListOfIDs() string{
     if err != nil {
        panic(err.Error())
      }
-    
+    list_of_file_obj := make([]Params_struct,0)
 
     reader := bufio.NewReader(file)
     scanner := bufio.NewScanner(reader)
 
     scanner.Split(bufio.ScanLines)
-	var file_obj Params_struct
+	
 	var str_obj string
 
     for scanner.Scan() {
+    	var file_obj Params_struct
 		//unmarshal into Params_struct
 		str_obj = scanner.Text()
 		err = json.Unmarshal([]byte(str_obj),&file_obj)
 		if err == nil {
 			//Add to map
 			key_rel_map[file_obj.Key] = file_obj.Rel
+			//Modify Accessed field
+			var temp interface{} //No need for object modification, Pass empty content
+			file_obj = updateRecord(file_obj,"Accessed","",&str_obj,temp)
 			
 		} else {
 			panic(err.Error())
 		}
-		
+		list_of_file_obj = append(list_of_file_obj,file_obj)
 		//fmt.Println(scanner.Text())
     }
     file.Close()
+
+
+    //Write to the file
+    writeListOfObjectsToFile(list_of_file_obj)
+
     //two dimensional array tp hold key relation pair
     list_of_keys := make([][]string,0)
     for k, v := range key_rel_map {
@@ -1591,6 +1766,19 @@ func getListOfIDs() string{
 	
 }
 
+func writeListOfObjectsToFile(list_of_file_obj []Params_struct){
+
+				fileptr, _ := os.OpenFile(filename, os.O_WRONLY|os.O_TRUNC,0600)
+			for _, v := range list_of_file_obj {
+					b, err := json.Marshal(v)
+					if _, err = fileptr.WriteString(string(b)+"\n"); err != nil {
+				panic(err)
+		 		}
+
+			}
+			fileptr.Close() 
+
+}
 func convertToResult(str string) string{
 	var y string
 	if(len(str) >=1 ){
