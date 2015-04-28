@@ -482,21 +482,34 @@ type ValueType_struct struct {
 	
 }
 
+func getSizeInBytes(val interface{}) string {
+     s,_:=json.Marshal(&val)
+     // fmt.Println("BATMAN",s)
+
+	 return strconv.FormatInt(int64(len(s)),10)		
+
+
+}
 
 /** This function takes triplet(containing ky,rel,Value) from the structure and builds triplet with Value containing the above fields
 */
 func buildValueJSONObject(file_obj Params_struct) string {
 
 	val := file_obj.Value
-	// fmt.Println("Value received is ",val.(string))
 	t := time.Now()
 	
 	var s string = t.Format("01/02/2006,15:04:05")
 
+
+		
+	// size := strconv.Itoa(getSizeInBytes(val)) +"bytes"
+	size := getSizeInBytes(val) +"bytes"
+
+	
 	var valueObj *ValueType_struct
 	valueObj = &ValueType_struct{
 								Content:val,
-								Size:"3kb",
+								Size:size,
 								Created: s,
 								Accessed: s,
 								Modified: s,
@@ -601,8 +614,13 @@ func updateRecord(file_obj Params_struct,field string,fieldContent string,str_ob
     			created = v.(string)
 
     		}else if k=="Size"{	
+    			if fieldContent == "Content"{
+    				//Modify size
+    				size = getSizeInBytes(content) +"bytes"
+    				
+    			}
     			
-    		size = v.(string)
+    		
     		}else if k=="Permission" {	
     			
     			permission = v.(string)
@@ -758,6 +776,7 @@ func partial_search_in_file(filestring string,key string,rel string,flag *int,st
        panic(err.Error())
     }
 
+	list_of_file_obj := make([]Params_struct,0)
     defer file.Close()
 
     reader := bufio.NewReader(file)
@@ -778,20 +797,28 @@ func partial_search_in_file(filestring string,key string,rel string,flag *int,st
 			if  file_obj.Rel == rel && flag1==1{
 				fmt.Println("\nFound a record")
 				*flag = 1
+				//Modify Accessed field
+				var temp interface{} //No need for object modification, Pass empty content
+				file_obj = updateRecord(file_obj,"Accessed","",str_obj,temp)
 				partialreply+=*str_obj
 				
 			}else if  file_obj.Key ==key && flag1==2{
 				fmt.Println("\nFound a record")
 				*flag = 1
+				//Modify Accessed field
+				var temp interface{} //No need for object modification, Pass empty content
+				file_obj = updateRecord(file_obj,"Accessed","",str_obj,temp)
 				partialreply+=*str_obj
 			}
 			
 		} else {
 			panic(err.Error())
 		}
-		
+		list_of_file_obj = append(list_of_file_obj,file_obj)
 		//fmt.Println(scanner.Text())
     }
+
+    writeListOfObjectsToFile(list_of_file_obj)
     *str_obj=partialreply
 	return nil
 }
@@ -921,36 +948,36 @@ func (t *Dict) Lookup(input_objPtr *Params_struct,reply *string) error {
 		 	log.Fatal("Dict error:",err);
 		 }		
 
-	} else { 
+		} else { 
 
 
-				var str_obj string
-			flag := 0	
-			search_in_file(filename,key,rel,&flag,&str_obj)
-			var resp_obj *Response_message
-			if flag == 1 {
-				
-				//Construct a reply message
-				resp_obj = &Response_message{
-								Result:str_obj,
-								Id: id,
-								Error: "null"}		
-			} else {
-				//Construct a reply message
-				fmt.Println("\nNo matching record found")
-				resp_obj = &Response_message{
-								Result:"null",
-								Id: id,
-								Error: "null"}		
-			}
-			b,_ := json.Marshal(resp_obj)
-			*reply = removebackslash(string(b))  //Set the reply
-	}
-	// input_obj := extract_params(f,&id)
-	// key = input_obj.Key
-	// rel = input_obj.Rel
-	
-	fmt.Println("Reply sent is ",*reply)
+					var str_obj string
+				flag := 0	
+				search_in_file(filename,key,rel,&flag,&str_obj)
+				var resp_obj *Response_message
+				if flag == 1 {
+					
+					//Construct a reply message
+					resp_obj = &Response_message{
+									Result:str_obj,
+									Id: id,
+									Error: "null"}		
+				} else {
+					//Construct a reply message
+					fmt.Println("\nNo matching record found")
+					resp_obj = &Response_message{
+									Result:"null",
+									Id: id,
+									Error: "null"}		
+				}
+				b,_ := json.Marshal(resp_obj)
+				*reply = removebackslash(string(b))  //Set the reply
+		}
+		// input_obj := extract_params(f,&id)
+		// key = input_obj.Key
+		// rel = input_obj.Rel
+		
+		fmt.Println("Reply sent is ",*reply)
 
 
 
