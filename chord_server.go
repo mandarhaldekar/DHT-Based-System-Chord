@@ -244,7 +244,7 @@ func Stabilize() error{
 
 fmt.Println("in stabilize after notify returned")
     time.Sleep(5 * time.Second)
-    timeVar := time.Now().Local()
+    timeVar := time.Now().In(time.UTC)
 	fmt.Println("---This is the Stabilize---",timeVar.Format("20060102150405"))
 	fmt.Println("Successor is : ",successor.Id)
 	fmt.Println("Predecessor is : ",predecessor.Id)
@@ -299,7 +299,7 @@ func CheckPredecessor() error{
 
 
     time.Sleep(5* time.Second)
-    timeVar := time.Now().Local()
+    timeVar := time.Now().In(time.UTC)
 	fmt.Println("---This is CheckPredecessor---",timeVar.Format("20060102150405"))
 return nil
 }
@@ -492,7 +492,7 @@ func fix_fingers() {
 
 	}
 	time.Sleep(5* time.Second)
-    timeVar := time.Now().Local()
+    timeVar := time.Now().In(time.UTC)
 	fmt.Println("---This is fix_fingers---",timeVar.Format("20060102150405"))
 
 
@@ -616,7 +616,7 @@ func getSizeInBytes(val interface{}) string {
 func buildValueJSONObject(file_obj Params_struct) string {
 
 	val := file_obj.Value
-	t := time.Now()
+	t := time.Now().In(time.UTC)
 	
 	var s string = t.Format("01/02/2006,15:04:05")
 
@@ -691,7 +691,7 @@ func updateRecord(file_obj Params_struct,field string,fieldContent string,str_ob
 	val := file_obj.Value
 	
 	
-	t := time.Now()
+	t := time.Now().In(time.UTC)
 	
 	s := t.Format("01/02/2006,15:04:05")
 	var accessed, modified, created,permission,size string
@@ -2109,10 +2109,125 @@ file, err := os.Open(filename)
 
 
 
+func Purge(){
+
+
+file, err := os.Open(filename)
+	list_of_file_obj := make([]Params_struct,0)
+
+    if err != nil {
+       panic(err.Error())
+    }
+
+    defer file.Close()
+
+    reader := bufio.NewReader(file)
+    scanner := bufio.NewScanner(reader)
+	
+    scanner.Split(bufio.ScanLines)
+	
+
+	// var str_obj string
+	
+     for scanner.Scan() {
+		//unmarshal into Params_struct
+		var file_obj Params_struct
+		str_obj := scanner.Text()
+		// fmt.Println("Json String is",*str_obj)
+		err = json.Unmarshal([]byte(str_obj),&file_obj)
+//		var thisVal ValueType_struct
+		//thisVal=file_obj.Value.(ValueType_struct)
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	val := file_obj.Value
+	
+	
+//	t := time.Now()
+	
+//	s := t.Format("01/02/2006,15:04:05")
+	var accessed string
+	//var contentVal interface{}
+	// var modValue interface{}
+    m1 := val.(map[string]interface{})
+
+    // println("Successor is :")
+    for k, v := range m1 {
+    	 switch v.(type) {
+
+    	 
+    	     	 	
+		case interface{}:
+			// if k == "Content" {
+			// 	if fieldContent != "Content"{
+			// 	contentVal = v
+			// 	}else {
+			// 		contentVal = content
+			// 	}
+
+		 if k=="Accessed" {  //By Default modified	
+    	//		println("\nAccessed date is ");print(v.(string))
+    			
+
+
+    			accessed = v.(string)
+    			
+
+
+    		} 
+    		
+
+	    default:
+	    	fmt.Println("In Default")
+	    	break
+
+	    }
+    }
+
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// var UTC *Location = &utcLoc		
+		t := time.Now().In(time.UTC)
+		t1,_:=time.Parse("01/02/2006,15:04:05 ",accessed)
+		// t,_:=time.Parse("01/02/2006,15:04:05",tstring)
+	//var s string = t.Format("01/02/2006,15:04:05")
+	//	if err == nil{
+			diff :=  t.Sub(t1)
+			fmt.Println("\n\n\n\n\n\n\n\n\n\n  ")
+			fmt.Println("Difference in time  : ",diff )
+			 fmt.Println(" time to live: ", Time_to_live , " t:",t, "t1:", t1)
+			if  diff < Time_to_live {
+								
+				
+				list_of_file_obj=append(list_of_file_obj,file_obj)
+
+			}
+			
+	//	} else {
+	//		panic(err.Error())
+	//	}
+		
+		
+	
+    }
+  
+    writeListOfObjectsToFile(list_of_file_obj)
+	fmt.Println("\nDeleted records..")
+	
+//time.Sleep(60* time.Second* 2 )  /////substitute time_to_live
+    timeVar := time.Now().In(time.UTC)
+	fmt.Println("---This is Purge---",timeVar.Format("20060102150405"))
+
+
+}
+
+
+
 var listener net.Listener //this holds the Listener object
 var conn net.Conn //This holds the connection
 var dict *Dict
-
+var Time_to_live time.Duration
 
 func startServer() {
 	if len(os.Args) != 2{
@@ -2159,6 +2274,7 @@ func startServer() {
        
 
 }
+
 
 func main() {
 	runtime.GOMAXPROCS(8)
@@ -2208,6 +2324,20 @@ func main() {
     	println("\nFix fingers executing")        
       time.Sleep(1000* time.Microsecond)
       fix_fingers()
+  			}
+    	}()
+
+
+
+     go func() {
+    	defer wg.Done()
+    	for{
+    	
+    	println("\nPurge executing")        
+    	
+      Time_to_live=5*time.Minute
+      Purge()
+       time.Sleep(time.Minute * 2)
   			}
     	}()
 
