@@ -22,7 +22,6 @@ import (
 
 type Response_message struct {
 	Result string
-	Id int
 	Error string
 }
 
@@ -48,6 +47,7 @@ type Config_file struct {
 	Predecessor interface{}
 	Successor interface{}
     Knownnode interface{}
+    TimetoLive int
 
 }
 
@@ -120,17 +120,34 @@ func Join(){
 		  config_obj.Successor=succ
 		  successor=succ
 		  print ("In join: Changed Successor to:", successor.Id )
-myData:= make([]Params_struct,0)
-rpc_call = c.Go("Dict.Retrieve_data",&id,&myData,nil)	
+// myData:= make([]Params_struct,0)
+var myData string
+c1, _ := jsonrpc.Dial(config_obj.Protocol, successor.IpAddress +":"+strconv.Itoa(successor.Port))
+defer c1.Close()
+rpc_call = c1.Go("Dict.Retrieve_data",&id,&myData,nil)	
 
 		  <-rpc_call.Done
-writeListOfObjectsToFile(myData)
+// writeListOfObjectsToFile(myData)
 
+file, err := os.OpenFile(filename, os.O_TRUNC|os.O_WRONLY,0600)
+	
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+
+	if _, err = file.WriteString(myData); err != nil {
+		
+		panic(err)
+	 } 
+
+fmt.Println("My data")
+fmt.Println(myData)
 	fmt.Println("Retrieved my data")
 }
 
 
-func (t* Dict) Retrieve_data(id *int,myData *[]Params_struct) error{
+func (t* Dict) Retrieve_data(id *int,myData *string) error{
 
 file, err := os.Open(filename)
 	list_of_file_obj := make([]Params_struct,0)
@@ -145,28 +162,42 @@ file, err := os.Open(filename)
     scanner := bufio.NewScanner(reader)
 	
     scanner.Split(bufio.ScanLines)
-	
+	 *myData=""
 	// var str_obj string
-	
+var flag int
+flag=0
+
      for scanner.Scan() {
 		//unmarshal into Params_struct
 		var file_obj Params_struct
 		str_obj := scanner.Text()
-		// fmt.Println("Json String is",*str_obj)
-		err = json.Unmarshal([]byte(str_obj),&file_obj)
-		if err == nil{
-			if  (getHashValueForItem(file_obj.Key,file_obj.Rel) <= *id) {
+		 fmt.Println("Json String is",str_obj)
+		err=json.Unmarshal([]byte(str_obj),&file_obj)
+		if err != nil {
+       panic(err.Error())
+    }
+	//	if err == nil{
+			fmt.Println("\n\n\n\n\n\n\n\n\n\n\n")
+					fmt.Println("Hash", getHashValueForItem(file_obj.Key,file_obj.Rel))
+			if  ((getHashValueForItem(file_obj.Key,file_obj.Rel) <= *id) ||  (getHashValueForItem(file_obj.Key,file_obj.Rel)> config_obj.ServerID) ) {
 								
-				*myData=append(*myData,file_obj)
+					fmt.Println("\n\n\n\n\n\n\n\n\n\n\n")
+					fmt.Println("Hash", getHashValueForItem(file_obj.Key,file_obj.Rel))
+					if(flag==1)	{
+						*myData+="\n"
+					}
+				*myData+=str_obj
+				flag=1
+				// myData=append(myData,file_obj)
 				// (*myData)+=str_obj
 			}else{
 				list_of_file_obj=append(list_of_file_obj,file_obj)
 
 			}
 			
-		} else {
-			panic(err.Error())
-		}
+		// } else {
+		// 	panic(err.Error())
+		// }
 		
 		
 	
@@ -303,6 +334,7 @@ func read_server_config_file(severConfigFile string){
     fmt.Println("IP Address : ",config_obj.IpAddress)
     fmt.Println("Port  : ",config_obj.Port)
     fmt.Println("ServerID : ",config_obj.ServerID)
+    fmt.Println("TimetoLive : ",config_obj.TimetoLive)
     // fmt.Println("Predecessor : ",config_obj.Predecessor)
     // fmt.Println("Successor : ",config_obj.Successor)
 
@@ -474,16 +506,28 @@ func find_successor(id int) Nodeid {
 	}else{
 		var nextnode Nodeid
 		nextnode = closest_preceding_node(id)
+		fmt.Printf("Next node port : %d   ID : %d",nextnode.Port,nextnode.Id)
 		if (nextnode==selfnode){
-			if(id< config_obj.ServerID){
-				return selfnode
-			}else{
+			if( (id<successor.Id  || id >config_obj.ServerID) && (successor.Id <=  config_obj.ServerID)){
+				return successor
+			}else if(id<= config_obj.ServerID){
 		
-			// return selfnode
-			 return successor
+			fmt.Println("Returning self node ... for data value ",id)
+			 
+
+			 return selfnode
 			}
 		}
 		// println("Next node: ");print(nextnode.IpAddress);println(nextnode.Port);println(nextnode.Id)
+		// if (nextnode==selfnode){
+		// 	if( id<successor.Id || id > config_obj.ServerID){
+		// 		return successor
+		// 	}else if(id< config_obj.ServerID){
+		
+		// 	// return selfnode
+		// 	 return selfnode
+		// 	}
+		// }
 		var output Nodeid
 
 		 c, err := jsonrpc.Dial(config_obj.Protocol, nextnode.IpAddress +":"+strconv.Itoa(nextnode.Port))
@@ -694,6 +738,8 @@ func updateRecord(file_obj Params_struct,field string,fieldContent string,str_ob
     				//Modify size
     				size = getSizeInBytes(content) +"bytes"
     				
+    			}else{
+    				size = v.(string)
     			}
     			
     		
@@ -784,9 +830,7 @@ func extract_params(f interface{},id *int) Params_struct {
 			}
 
 	    default: //for ID
-	    	if vv != nil {
-				*id = int(vv.(float64))
-			}
+	    	
 	    }
 	}
 	    return input_obj
@@ -859,7 +903,7 @@ func partial_search_in_file(filestring string,key string,rel string,flag *int,st
     scanner := bufio.NewScanner(reader)
 
     var partialreply string
-    partialreply=""
+    
     scanner.Split(bufio.ScanLines)
 	var file_obj Params_struct
 	// var str_obj string
@@ -876,7 +920,8 @@ func partial_search_in_file(filestring string,key string,rel string,flag *int,st
 				//Modify Accessed field
 				var temp interface{} //No need for object modification, Pass empty content
 				file_obj = updateRecord(file_obj,"Accessed","",str_obj,temp)
-				partialreply+=*str_obj
+				partialreply+=*str_obj + ","
+				
 				
 			}else if  file_obj.Key ==key && flag1==2{
 				fmt.Println("\nFound a record")
@@ -884,7 +929,7 @@ func partial_search_in_file(filestring string,key string,rel string,flag *int,st
 				//Modify Accessed field
 				var temp interface{} //No need for object modification, Pass empty content
 				file_obj = updateRecord(file_obj,"Accessed","",str_obj,temp)
-				partialreply+=*str_obj
+				partialreply+=*str_obj + ","
 			}
 			
 		} else {
@@ -895,6 +940,11 @@ func partial_search_in_file(filestring string,key string,rel string,flag *int,st
     }
 
     writeListOfObjectsToFile(list_of_file_obj)
+    //Remove last comma
+    if(len(partialreply) >= 1){
+    	//Slice
+    	partialreply = partialreply[0:len(partialreply)-1]
+    }
     *str_obj=partialreply
 	return nil
 }
@@ -984,6 +1034,63 @@ This function finds the successor of id
 // }
 
 
+func (t *Dict) LookupOnRel(input_objPtr *Params_struct,reply *string) error {
+
+	var key string;var rel string
+	key = (*input_objPtr).Key
+	rel = (*input_objPtr).Rel
+
+	if(rel != "" && key == ""){
+
+
+			var str_obj string
+			flag := 0	
+			partial_search_in_file(filename,key,rel,&flag,&str_obj,1) //last parameter 1 for match on Rel
+			// var resp_obj *Response_message
+			if flag == 1 {
+				
+				*reply = str_obj
+			} else {
+				//Construct a reply message
+				fmt.Println("\nNo matching record found")
+				*reply = str_obj
+			}
+
+	}
+
+	return nil
+
+}
+
+
+func (t *Dict) LookupOnVal(input_objPtr *Params_struct,reply *string) error {
+
+	var key string;var rel string
+	key = (*input_objPtr).Key
+	rel = (*input_objPtr).Rel
+
+	if(rel == "" && key != ""){
+
+
+			var str_obj string
+			flag := 0	
+			partial_search_in_file(filename,key,rel,&flag,&str_obj,2) //last parameter 1 for match on Rel
+			// var resp_obj *Response_message
+			if flag == 1 {
+				
+				*reply = str_obj
+			} else {
+				//Construct a reply message
+				fmt.Println("\nNo matching record found")
+				*reply = str_obj
+			}
+
+	}
+
+	return nil
+
+}
+
 
 //Lookup that handles partial match
 func (t *Dict) Lookup(input_objPtr *Params_struct,reply *string) error {
@@ -994,7 +1101,7 @@ func (t *Dict) Lookup(input_objPtr *Params_struct,reply *string) error {
 	// if err != nil {
 	// 	log.Fatal("error:",err);
 	// }
-	var key string;var rel string;var id int
+	var key string;var rel string
 	key = (*input_objPtr).Key
 	rel = (*input_objPtr).Rel
 	
@@ -1010,12 +1117,19 @@ func (t *Dict) Lookup(input_objPtr *Params_struct,reply *string) error {
 	if (succ_node.Id != config_obj.ServerID){
 		fmt.Println("In IFFFF")
 		// succ_node := find_successor(hashValue)
-		fmt.Println("Successor node is ",succ_node.Port)
+		fmt.Printf("Successor node port : %d   ID : %d",succ_node.Port,succ_node.Id)
 		c, err := jsonrpc.Dial(config_obj.Protocol, succ_node.IpAddress +":"+strconv.Itoa(succ_node.Port))
+		defer c.Close()
 	      var reply1 string
 
-		 rpc_call := c.Go("Dict.Lookup",input_objPtr,&reply1,nil)		
-		  <-rpc_call.Done
+		 err_call := c.Call("Dict.Lookup",input_objPtr,&reply1)		
+	      if(err_call != nil){
+
+	      		fmt.Println("Error while calling RPC in partial match. Callling to node ",succ_node.Id)
+	      }
+
+		 // rpc_call := c.Go("Dict.Lookup",input_objPtr,&reply1,nil)		
+		 //  <-rpc_call.Done
 
 		  fmt.Println("If conf reply is : ",reply1)
 		  *reply=removebackslash(reply1)
@@ -1036,14 +1150,12 @@ func (t *Dict) Lookup(input_objPtr *Params_struct,reply *string) error {
 					//Construct a reply message
 					resp_obj = &Response_message{
 									Result:str_obj,
-									Id: id,
 									Error: "null"}		
 				} else {
 					//Construct a reply message
 					fmt.Println("\nNo matching record found")
 					resp_obj = &Response_message{
 									Result:"null",
-									Id: id,
 									Error: "null"}		
 				}
 				b,_ := json.Marshal(resp_obj)
@@ -1063,216 +1175,119 @@ func (t *Dict) Lookup(input_objPtr *Params_struct,reply *string) error {
 		visitednodes := make([]int,0)
 		var valueToSearch int
 		hashValue := getHashValueForItem(key, rel)
-		var groupreply string
-		groupreply=""
+		
 		a:= hashValue & 15
+		listOfPartialMatchArray := make([]string,0)
+		var replyPartialMatch string = ""
 		for i:=0;i<16;i++ {
+			
 			c:= i << 4
 			b:=a | c
 			valueToSearch=b
-
-			
-			
 			succ_node := find_successor(valueToSearch)
 			visited:=0
+
 			for _,visit:=range visitednodes{
 				if (visit==succ_node.Id){
 					visited=1
 				}
 			}
+			//Already visited this node, so do not make an RPC.
 			if (visited==1){
-				break;
-			}
-			visitednodes=append(visitednodes,succ_node.Id)
+				continue;
 
+			}
+
+			//Make an RPC to the successor
 			fmt.Println("Hash value of the data :",valueToSearch)
-	//Check if current node is successor node. If not then call RPC to insert at successor node
+			fmt.Println("Making RPC for partial match to ",succ_node.Id)
 
-	if (succ_node.Id != config_obj.ServerID){
-		fmt.Println("In IFFFF")
-		// succ_node := find_successor(hashValue)
-		fmt.Println("Successor node is ",succ_node.Port)
-		c, err := jsonrpc.Dial(config_obj.Protocol, succ_node.IpAddress +":"+strconv.Itoa(succ_node.Port))
-	      var reply1 string
+			c1ient, _ := jsonrpc.Dial(config_obj.Protocol, succ_node.IpAddress +":"+strconv.Itoa(succ_node.Port))
+			defer c1ient.Close()
+		    var reply1 string
 
-		 rpc_call := c.Go("Dict.Lookup",input_objPtr,&reply1,nil)		
-		  <-rpc_call.Done
+	      	rpc_call := c1ient.Go("Dict.LookupOnRel",input_objPtr,&reply1,nil)		
+		  	<-rpc_call.Done
+		  	replyPartialMatch += reply1
+		  	if(len(reply1) >= 1) {  //Do not add empty string to results
+		  		listOfPartialMatchArray = append(listOfPartialMatchArray,reply1)
+		  	}
 
-		  fmt.Println("If conf reply is : ",reply1)
-		  //*reply=reply1
-		  groupreply+=reply1
-		 // println("output is : ");println(output.IpAddress);println(output.Port)
-		 if err != nil {
-		 	log.Fatal("Dict error:",err);
-		 }		
+			//Add node to visited list
+			visitednodes=append(visitednodes,succ_node.Id)
+		}//for loop ends
+		//Construct reply and send
+		//Marshal the array
+		resultString,_ := json.Marshal(listOfPartialMatchArray)
 
-	} else { 
-
-
-				var str_obj string
-			flag := 0	
-			partial_search_in_file(filename,key,rel,&flag,&str_obj,1)
-			// var resp_obj *Response_message
-			if flag == 1 {
-				
-				//Construct a reply message
-				// resp_obj = &Response_message{
-				// 				Result:str_obj,
-				// 				Id: id,
-				// 				Error: "null"}		
-
-				// strreply,_:=json.Marshal(resp_obj)
-				groupreply+=str_obj
-			} else {
-				//Construct a reply message
-				fmt.Println("\nNo matching record found")
-				// resp_obj = &Response_message{
-				// 				Result:"null",
-				// 				Id: id,
-				// 				Error: "null"}	
-					
-			}
-			//b,_ := json.Marshal(resp_obj)
-			//*reply = string(b)  //Set the reply
-	}
-	// input_obj := extract_params(f,&id)
-	// key = input_obj.Key
-	// rel = input_obj.Rel
+		var resp_obj *Response_message
+		resp_obj = &Response_message{
+						Result:string(resultString),
+						Error: "null"}		
+		
+		b,_ := json.Marshal(resp_obj)
+		*reply = removebackslash(string(b) )
+	//Partial match for rel ends			
 	
+	} else if(rel==""){
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-
-
-		}
-		if (groupreply=="")	{
-			resp_obj := &Response_message{
-								Result:"null",
-								Id: id,
-								Error: "null"}	
-			b,_ := json.Marshal(resp_obj)
-			*reply = string(b)  //Set the reply
-		}else{
-		*reply=groupreply
-		}
-	fmt.Println("Reply sent is ",*reply)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-	}else if(rel==""){
 		visitednodes := make([]int,0)
 		var valueToSearch int
 		hashValue := getHashValueForItem(key, rel)
-		var groupreply string
-		groupreply=""
+		
 		a:= hashValue & 240
-		for i:=0;i<16;i++{
+		listOfPartialMatchArray := make([]string,0)
+		var replyPartialMatch string = ""
+		for i:=0;i<16;i++ {
 			
 			b:=a | i
+			
 			valueToSearch=b
-////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-
 			succ_node := find_successor(valueToSearch)
 			visited:=0
+
 			for _,visit:=range visitednodes{
 				if (visit==succ_node.Id){
 					visited=1
 				}
 			}
+			//Already visited this node, so do not make an RPC.
 			if (visited==1){
-				break;
-			}
-			visitednodes=append(visitednodes,succ_node.Id)
+				continue;
 
+			}
+
+			//Make an RPC to the successor
 			fmt.Println("Hash value of the data :",valueToSearch)
-	//Check if current node is successor node. If not then call RPC to insert at successor node
+			fmt.Println("Making RPC for partial match to ",succ_node.Id)
 
-	if (succ_node.Id != config_obj.ServerID){
-		fmt.Println("In IFFFF")
-		// succ_node := find_successor(hashValue)
-		fmt.Println("Successor node is ",succ_node.Port)
-		c, err := jsonrpc.Dial(config_obj.Protocol, succ_node.IpAddress +":"+strconv.Itoa(succ_node.Port))
-	      var reply1 string
+			c1ient, _ := jsonrpc.Dial(config_obj.Protocol, succ_node.IpAddress +":"+strconv.Itoa(succ_node.Port))
+			defer c1ient.Close()
+		    var reply1 string
 
-		 rpc_call := c.Go("Dict.Lookup",input_objPtr,&reply1,nil)		
-		  <-rpc_call.Done
+	      	rpc_call := c1ient.Go("Dict.LookupOnVal",input_objPtr,&reply1,nil)		
+		  	<-rpc_call.Done
+		  	replyPartialMatch += reply1
+		  	if(len(reply1) >= 1) {  //Do not add empty string to results
+		  		listOfPartialMatchArray = append(listOfPartialMatchArray,reply1)
+		  	}
+		  	
 
-		  fmt.Println("If conf reply is : ",reply1)
-		  //*reply=reply1
-		  	groupreply+=reply1
-		 // println("output is : ");println(output.IpAddress);println(output.Port)
-		 if err != nil {
-		 	log.Fatal("Dict error:",err);
-		 }		
+			//Add node to visited list
+			visitednodes=append(visitednodes,succ_node.Id)
+		}//for loop ends
+		//Construct reply and send
+		//Marshal the array
+		resultString,_ := json.Marshal(listOfPartialMatchArray)
 
-	} else { 
-
-
-				var str_obj string
-			flag := 0	
-			partial_search_in_file(filename,key,rel,&flag,&str_obj,2)
-			// var resp_obj *Response_message
-			if flag == 1 {
-				
-			// 	//Construct a reply message
-			// 	resp_obj = &Response_message{
-			// 					Result:str_obj,
-			// 					Id: id,
-			// 					Error: "null"}		
-
-			// 	strreply,_:=json.Marshal(resp_obj)
-				groupreply+=str_obj
-			} else {
-				//Construct a reply message
-				fmt.Println("\nNo matching record found")
-				// resp_obj = &Response_message{
-				// 				Result:"null",
-				// 				Id: id,
-				// 				Error: "null"}		
-			}
-		//	b,_ := json.Marshal(resp_obj)
-			//*reply = string(b)  //Set the reply
-	}
-	// input_obj := extract_params(f,&id)
-	// key = input_obj.Key
-	// rel = input_obj.Rel
-	
-
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-
-
-		}
-		if (groupreply=="")	{
-			resp_obj := &Response_message{
-								Result:"null",
-								Id: id,
-								Error: "null"}	
-			b,_ := json.Marshal(resp_obj)
-			*reply = string(b)  //Set the reply
-		}else{
-		*reply=groupreply
-		}
-	fmt.Println("Reply sent is ",*reply)
+		var resp_obj *Response_message
+		resp_obj = &Response_message{
+						Result:string(resultString),
+						Error: "null"}		
+		
+		b,_ := json.Marshal(resp_obj)
+		*reply = removebackslash(string(b) )
+	//Partial match for key ends		
 	}
 
 	return nil
@@ -1290,7 +1305,7 @@ func (t *Dict) Insert(input_objPtr *Params_struct,reply *string) error {
 		// log.Fatal("error:",err);
 	// }
 	
-	var key string;var rel string;var id int
+	var key string;var rel string
 	key = (*input_objPtr).Key
 	rel = (*input_objPtr).Rel
 	// input_obj := extract_params(f,&id)
@@ -1305,8 +1320,8 @@ func (t *Dict) Insert(input_objPtr *Params_struct,reply *string) error {
 	//Check if current node is successor node. If not then call RPC to insert at successor node
 	if (succ_node.Id != config_obj.ServerID){
 		fmt.Println("In IFFFF")
-		succ_node := find_successor(hashValue)
-		fmt.Println("Successor node is ",succ_node.Port)
+	//	succ_node := find_successor(hashValue)
+		fmt.Printf("Successor node port : %d   ID : %d",succ_node.Port,succ_node.Id)
 		c, err := jsonrpc.Dial(config_obj.Protocol, succ_node.IpAddress +":"+strconv.Itoa(succ_node.Port))
 	      defer c.Close()
 		  var reply1 string
@@ -1332,7 +1347,6 @@ func (t *Dict) Insert(input_objPtr *Params_struct,reply *string) error {
 			fmt.Println("Record already exists")
 			resp_obj = &Response_message{
 								Result:"false",
-								Id: id,
 								Error: "Record already exists"}		
 		} else {
 			write_to_file(*input_objPtr,&write_file_reply)
@@ -1341,13 +1355,11 @@ func (t *Dict) Insert(input_objPtr *Params_struct,reply *string) error {
 				//Construct a reply message
 				resp_obj = &Response_message{
 								Result:"true",
-								Id: id,
 								Error: "null"}		
 			} else {
 				//Construct a reply message
 				resp_obj = &Response_message{
 								Result:"false",
-								Id: id,
 								Error: "Error writing to file"}		
 			}	
 		}
@@ -1373,7 +1385,7 @@ func (t *Dict) InsertOnShutdown(input_objPtr *Params_struct,reply *string) error
 		// log.Fatal("error:",err);
 	// }
 	
-	var key string;var rel string;var id int
+	var key string;var rel string
 	key = (*input_objPtr).Key
 	rel = (*input_objPtr).Rel
 	// input_obj := extract_params(f,&id)
@@ -1393,7 +1405,6 @@ func (t *Dict) InsertOnShutdown(input_objPtr *Params_struct,reply *string) error
 			fmt.Println("Record already exists")
 			resp_obj = &Response_message{
 								Result:"false",
-								Id: id,
 								Error: "Record already exists"}		
 		} else {
 			//Extract Content and store in it Value
@@ -1404,13 +1415,11 @@ func (t *Dict) InsertOnShutdown(input_objPtr *Params_struct,reply *string) error
 				//Construct a reply message
 				resp_obj = &Response_message{
 								Result:"true",
-								Id: id,
 								Error: "null"}		
 			} else {
 				//Construct a reply message
 				resp_obj = &Response_message{
 								Result:"false",
-								Id: id,
 								Error: "Error writing to file"}		
 			}	
 	}
@@ -1682,7 +1691,6 @@ func constructListReply(list_of_keys_string string)string{
 	}
 	resp_obj := &Response_message{
 						Result:"["+list_of_keys_string+"]",
-						Id: 0,
 						Error: "null"}	
 
     b,_ := json.Marshal(resp_obj)
@@ -2059,7 +2067,6 @@ file, err := os.Open(filename)
 		 rpc_call := c.Go("Dict.InsertOnShutdown",&file_obj,&reply1,nil)		
 		  <-rpc_call.Done
 
-		  fmt.Println("If conf reply is : ",reply1)
 		 
 		 //Notifying my predecessor of my successor, so it will change its it successor to my successor
 		  	c, err = jsonrpc.Dial(config_obj.Protocol, predecessor.IpAddress +":"+strconv.Itoa(predecessor.Port))
