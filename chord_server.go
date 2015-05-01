@@ -35,6 +35,14 @@ type Params_struct struct {
 	Key string
 	Rel string
 	Value interface{}
+	// Permissions string
+}
+
+type Params_struct_with_perm struct {
+	Key string
+	Rel string
+	Value interface{}
+	Permissions string
 }
 
 type Config_file struct {
@@ -47,7 +55,8 @@ type Config_file struct {
 	Predecessor interface{}
 	Successor interface{}
     Knownnode interface{}
-    TimetoLive int
+    TimetoLive int64
+    IsFirstNode int
 
 }
 
@@ -338,6 +347,11 @@ func read_server_config_file(severConfigFile string){
     // fmt.Println("Predecessor : ",config_obj.Predecessor)
     // fmt.Println("Successor : ",config_obj.Successor)
 
+
+    Time_to_live=time.Duration(config_obj.TimetoLive)*time.Minute
+
+	//Time_to_live=config_obj.TimetoLive*time.Minute
+
     selfnode.Id=config_obj.ServerID
 	selfnode.Port=config_obj.Port
 	selfnode.IpAddress=config_obj.IpAddress
@@ -555,7 +569,8 @@ func closest_preceding_node(id int) Nodeid {
 	
      for i:=max_bit; i>=1; i--{
     
-		if finger[i].Id >config_obj.ServerID && finger[i].Id <id {
+    	//To handle circular cases. 1st condition is normal condition. Second is when finger is less than id to be searched. and third is when finger is greater than Id to be searched. 
+		if (finger[i].Id >config_obj.ServerID && finger[i].Id <id) ||(id<config_obj.ServerID &&finger[i].Id <id) || (finger[i].Id > config_obj.ServerID && id < config_obj.ServerID){
 			return finger[i]
 			
 		}
@@ -610,17 +625,55 @@ func getSizeInBytes(val interface{}) string {
 
 
 }
+func getPermission(file_obj Params_struct) string{
+	val := file_obj.Value
+	var permission string
+	//var contentVal interface{}
+	// var modValue interface{}
+    m1 := val.(map[string]interface{})
+    // println("Successor is :")
+    for k, v := range m1 {
+    	 switch v.(type) {
 
+    	 
+    	     	 	
+		case interface{}:
+			if k=="Permissions" {	
+    			
+    			permission = v.(string)
+    		}
+   
+			break 	     	 	
+    	case string:
+    		//Always update Accessed
+    		
+
+	    default:
+	    	fmt.Println("In Default")
+	    	break
+
+	    }
+    }
+   return permission
+}
+
+func getPermissionFromInput(file_obj Params_struct) {
+
+
+
+}
 /** This function takes triplet(containing ky,rel,Value) from the structure and builds triplet with Value containing the above fields
 */
-func buildValueJSONObject(file_obj Params_struct) string {
+func buildValueJSONObject(file_obj Params_struct,permission string) string {
 
 	val := file_obj.Value
+	
+	
 	t := time.Now().In(time.UTC)
 	
 	var s string = t.Format("01/02/2006,15:04:05")
 
-
+	// var p string= getPermission(file_obj)
 		
 	// size := strconv.Itoa(getSizeInBytes(val)) +"bytes"
 	size := getSizeInBytes(val) +"bytes"
@@ -633,7 +686,7 @@ func buildValueJSONObject(file_obj Params_struct) string {
 								Created: s,
 								Accessed: s,
 								Modified: s,
-								Permission: "RW"}		
+								Permission: permission }		
 
 	
 	file_obj.Value = *valueObj
@@ -647,7 +700,7 @@ func buildValueJSONObject(file_obj Params_struct) string {
 
 //This function extracts contents of the value and returns Param Struct object
 // with only three things key, rel, value (no timestamp, size, permissions)
-func extractContentIntoValue(file_obj Params_struct) Params_struct{
+func extractContentIntoValue(file_obj Params_struct,permission *string) Params_struct{
 
 	val := file_obj.Value
 
@@ -661,7 +714,10 @@ func extractContentIntoValue(file_obj Params_struct) Params_struct{
 		case interface{}:
 			if k == "Content" {
 				contentVal = v
+			} else if k == "Permission" {
+				*permission = v.(string)
 			}
+
    
 			break 	     	 	
     	case string:
@@ -685,7 +741,7 @@ func extractContentIntoValue(file_obj Params_struct) Params_struct{
 // field: If "Modified", modify the Modified field
 //fieldContent : If "Content", modify content from the input "content" parameter
 //*str_obj_record is the json string representation of the modified input object
-func updateRecord(file_obj Params_struct,field string,fieldContent string,str_obj_record *string,content interface{}) Params_struct{
+func updateRecord(file_obj Params_struct,field string,fieldContent string,str_obj_record *string,content interface{},updated_permission string) Params_struct{
 
 	fmt.Println(file_obj.Value)
 	val := file_obj.Value
@@ -694,7 +750,7 @@ func updateRecord(file_obj Params_struct,field string,fieldContent string,str_ob
 	t := time.Now().In(time.UTC)
 	
 	s := t.Format("01/02/2006,15:04:05")
-	var accessed, modified, created,permission,size string
+	var accessed, modified, created,size,permission string
 	var contentVal interface{}
 	// var modValue interface{}
     m1 := val.(map[string]interface{})
@@ -743,9 +799,14 @@ func updateRecord(file_obj Params_struct,field string,fieldContent string,str_ob
     			}
     			
     		
-    		}else if k=="Permission" {	
-    			
-    			permission = v.(string)
+    		} else if k == "Permission"{
+    			if(updated_permission != "") {
+    				permission = updated_permission
+    			} else{
+    				permission = v.(string)
+    			}
+
+
     		}
    
 			break 	     	 	
@@ -780,10 +841,10 @@ func updateRecord(file_obj Params_struct,field string,fieldContent string,str_ob
 
 //It takes file_obj in basic form (i.e key, rel, value) and builds
 //Json object with timestamp, permission etc and writes to persistent storage container
-func write_to_file(file_obj Params_struct,reply *int) {
+func write_to_file(file_obj Params_struct,permission string,reply *int) {
 
 	*reply = 1;
-	valueStr := buildValueJSONObject(file_obj)
+	valueStr := buildValueJSONObject(file_obj,permission)
 	// b, err := json.Marshal(file_obj)	
 	//Create new file if does not exist	
 	if _, err := os.Stat(filename); err != nil {
@@ -827,6 +888,9 @@ func extract_params(f interface{},id *int) Params_struct {
 				if len(vv) == 3 {
 					input_obj.Value = vv[2]
 				}
+				// if len(vv)==4{
+				// 	input_obj.Permissions=vv[3]
+				// }
 			}
 
 	    default: //for ID
@@ -867,7 +931,7 @@ func search_in_file(filestring string,key string,rel string,flag *int,str_obj_re
 				
 				//Modify Accessed field
 				var temp interface{} //No need for object modification, Pass empty content
-				file_obj = updateRecord(file_obj,"Accessed","",str_obj_record,temp)
+				file_obj = updateRecord(file_obj,"Accessed","",str_obj_record,temp,"")
 				*flag = 1
 				// break	
 			}
@@ -919,7 +983,7 @@ func partial_search_in_file(filestring string,key string,rel string,flag *int,st
 				*flag = 1
 				//Modify Accessed field
 				var temp interface{} //No need for object modification, Pass empty content
-				file_obj = updateRecord(file_obj,"Accessed","",str_obj,temp)
+				file_obj = updateRecord(file_obj,"Accessed","",str_obj,temp,"")
 				partialreply+=*str_obj + ","
 				
 				
@@ -928,7 +992,7 @@ func partial_search_in_file(filestring string,key string,rel string,flag *int,st
 				*flag = 1
 				//Modify Accessed field
 				var temp interface{} //No need for object modification, Pass empty content
-				file_obj = updateRecord(file_obj,"Accessed","",str_obj,temp)
+				file_obj = updateRecord(file_obj,"Accessed","",str_obj,temp,"")
 				partialreply+=*str_obj + ","
 			}
 			
@@ -1295,7 +1359,7 @@ func (t *Dict) Lookup(input_objPtr *Params_struct,reply *string) error {
 }
 
 //Insert the triplet if does not already exists and return true, else return false
-func (t *Dict) Insert(input_objPtr *Params_struct,reply *string) error {
+func (t *Dict) Insert(input_objPtr1 *Params_struct_with_perm,reply *string) error {
 
 	// var f interface{}
 	var write_file_reply int
@@ -1304,13 +1368,22 @@ func (t *Dict) Insert(input_objPtr *Params_struct,reply *string) error {
 	// if err != nil {
 		// log.Fatal("error:",err);
 	// }
-	
+	var permission = (*input_objPtr1).Permissions
 	var key string;var rel string
-	key = (*input_objPtr).Key
-	rel = (*input_objPtr).Rel
+	key = (*input_objPtr1).Key
+	rel = (*input_objPtr1).Rel
+
+	var input_objPtr *Params_struct
+	input_objPtr = &Params_struct{
+									Key:key,
+									Rel: rel,
+									Value:(*input_objPtr1).Value}
+
 	// input_obj := extract_params(f,&id)
 	// key = input_obj.Key
 	// rel = input_obj.Rel
+	
+	
 	hashValue := getHashValueForItem(key, rel)
 
 	//Find the successor node
@@ -1326,7 +1399,7 @@ func (t *Dict) Insert(input_objPtr *Params_struct,reply *string) error {
 	      defer c.Close()
 		  var reply1 string
 
-		 rpc_call := c.Go("Dict.Insert",input_objPtr,&reply1,nil)		
+		 rpc_call := c.Go("Dict.Insert",input_objPtr1,&reply1,nil)		
 		  <-rpc_call.Done
 
 		  fmt.Println("If conf reply is : ",reply1)
@@ -1349,7 +1422,7 @@ func (t *Dict) Insert(input_objPtr *Params_struct,reply *string) error {
 								Result:"false",
 								Error: "Record already exists"}		
 		} else {
-			write_to_file(*input_objPtr,&write_file_reply)
+			write_to_file(*input_objPtr,permission,&write_file_reply)
 			if write_file_reply == 0 {
 			
 				//Construct a reply message
@@ -1408,8 +1481,9 @@ func (t *Dict) InsertOnShutdown(input_objPtr *Params_struct,reply *string) error
 								Error: "Record already exists"}		
 		} else {
 			//Extract Content and store in it Value
-			*input_objPtr = extractContentIntoValue(*input_objPtr)
-			write_to_file(*input_objPtr,&write_file_reply)
+			var permission string
+			*input_objPtr = extractContentIntoValue(*input_objPtr,&permission)
+			write_to_file(*input_objPtr,permission,&write_file_reply)
 			if write_file_reply == 0 {
 			
 				//Construct a reply message
@@ -1436,13 +1510,22 @@ func (t *Dict) InsertOnShutdown(input_objPtr *Params_struct,reply *string) error
 //Read triplets from file, store them in list of Param_struct object.
 //If any triplet matches with given key and relation, then update its value with new value
 //In the end, write entire list back to the file
-func (t* Dict) InsertOrUpdate(input_objPtr *Params_struct,reply *string) error{
+func (t* Dict) InsertOrUpdate(input_objPtr1 *Params_struct_with_perm,reply *string) error{
 	
 	
+	
+
+
+	var permission = (*input_objPtr1).Permissions
 	var key string;var rel string
-	key = (*input_objPtr).Key
-	rel = (*input_objPtr).Rel
-	
+	key = (*input_objPtr1).Key
+	rel = (*input_objPtr1).Rel
+
+	var input_objPtr *Params_struct
+	input_objPtr = &Params_struct{
+									Key:key,
+									Rel: rel,
+									Value:(*input_objPtr1).Value}	
 
 	hashValue := getHashValueForItem(key, rel)
 
@@ -1461,7 +1544,7 @@ func (t* Dict) InsertOrUpdate(input_objPtr *Params_struct,reply *string) error{
 		c, err := jsonrpc.Dial(config_obj.Protocol, succ_node.IpAddress +":"+strconv.Itoa(succ_node.Port))
 	      var reply1 string
 		defer c.Close()
-		 rpc_call := c.Go("Dict.InsertOrUpdate",input_objPtr,&reply1,nil)		
+		 rpc_call := c.Go("Dict.InsertOrUpdate",input_objPtr1,&reply1,nil)		
 		  <-rpc_call.Done
 
 		  // fmt.Println("If conf reply is : ",reply1)
@@ -1496,13 +1579,26 @@ func (t* Dict) InsertOrUpdate(input_objPtr *Params_struct,reply *string) error{
 				var file_obj Params_struct
 				str_obj = scanner.Text()
 				err = json.Unmarshal([]byte(str_obj),&file_obj)
+
+
+
+
+
+
+
+
+
 				if err == nil{
+					  
 					if file_obj.Key == key && file_obj.Rel == rel {
-						fmt.Println("\nFound the record")
-						//Content to be modified, pass new content
-						file_obj = updateRecord(file_obj,"Modified","Content",&str_obj,(*input_objPtr).Value)
 						
-						fmt.Println(file_obj.Value)
+						if(getPermission(file_obj)=="RW" ){
+							fmt.Println("\nFound the record")
+							//Content to be modified, pass new content
+							file_obj = updateRecord(file_obj,"Modified","Content",&str_obj,(*input_objPtr).Value,permission)
+							
+							fmt.Println(file_obj.Value)
+						}
 						flag = 1	
 					}
 					
@@ -1516,7 +1612,7 @@ func (t* Dict) InsertOrUpdate(input_objPtr *Params_struct,reply *string) error{
 		    if flag == 0 {
 		    	//Insert in the end
 		    	write_file_reply := 1
-		    	write_to_file((*input_objPtr),&write_file_reply)
+		    	write_to_file((*input_objPtr),permission,&write_file_reply)
 		    	if write_file_reply == 0 {
 		    		fmt.Println("Record does not exist..Inserting")
 		    	} else {
@@ -1597,7 +1693,7 @@ func (t *Dict) Delete(input_objPtr *Params_struct, reply *string) error {
 				err = json.Unmarshal([]byte(str_obj),&file_obj)
 				if err == nil {
 
-					if file_obj.Key == key && file_obj.Rel == rel {
+					if file_obj.Key == key && file_obj.Rel == rel && getPermission(file_obj)=="RW" {
 						fmt.Println("\nFound the record...Deleting")
 						
 					} else {
@@ -1656,7 +1752,7 @@ func getListOfKeys() string {
 			key_rel_map[file_obj.Key] = file_obj.Rel
 			//Modify Accessed field
 			var temp interface{} //No need for object modification, Pass empty content
-			file_obj = updateRecord(file_obj,"Accessed","",&str_obj,temp)
+			file_obj = updateRecord(file_obj,"Accessed","",&str_obj,temp,"")
 
 			
 		} else {
@@ -1712,7 +1808,7 @@ func (t *Dict) ListKeys(input_objPtr *Params_struct, reply *string) error {
 	var key string;
 	key = (*input_objPtr).Key
 	// println("Key is : ",key)
-	hashValue := getHashValueForItem(config_obj.IpAddress, strconv.Itoa( config_obj.Port))
+	// hashValue := getHashValueForItem(config_obj.IpAddress, strconv.Itoa( config_obj.Port))
 
 	if(len(key) == 0){ //First node initiating request insert its own ID in key and make RPC to Successor
 
@@ -1727,13 +1823,12 @@ func (t *Dict) ListKeys(input_objPtr *Params_struct, reply *string) error {
 
 		//
 
-		//PRC to sucessor
-		succ_node := find_successor(hashValue)
+		
 
-		if(succ_node.Id != config_obj.ServerID) { //node is successor of itself, one node case
-			fmt.Println("Successor node is ",succ_node.Port)
+		if(successor.Id != config_obj.ServerID) { //node is successor of itself, one node case
+			fmt.Println("Successor node is ",successor.Port)
 
-			c, _ := jsonrpc.Dial(config_obj.Protocol, succ_node.IpAddress +":"+strconv.Itoa(succ_node.Port))
+			c, _ := jsonrpc.Dial(config_obj.Protocol, successor.IpAddress +":"+strconv.Itoa(successor.Port))
 		       var reply1 string
 		     defer c.Close()
 
@@ -1776,9 +1871,9 @@ func (t *Dict) ListKeys(input_objPtr *Params_struct, reply *string) error {
 
 
 			//PRC to sucessor
-			succ_node := find_successor(hashValue)
-			fmt.Println("Successor node is ",succ_node.Port)
-			c, _ := jsonrpc.Dial(config_obj.Protocol, succ_node.IpAddress +":"+strconv.Itoa(succ_node.Port))
+			
+			fmt.Println("Successor node is ",successor.Port)
+			c, _ := jsonrpc.Dial(config_obj.Protocol, successor.IpAddress +":"+strconv.Itoa(successor.Port))
 		       var reply1 string
 		  defer c.Close()
 
@@ -1842,7 +1937,7 @@ func getListOfIDs() string{
 			key_rel_map[file_obj.Key] = file_obj.Rel
 			//Modify Accessed field
 			var temp interface{} //No need for object modification, Pass empty content
-			file_obj = updateRecord(file_obj,"Accessed","",&str_obj,temp)
+			file_obj = updateRecord(file_obj,"Accessed","",&str_obj,temp,"")
 			
 		} else {
 			panic(err.Error())
@@ -1904,6 +1999,7 @@ func convertToResult(str string) string{
 
 
 }
+
 //This function returns list of key,relation pair in paramater *reply
 func (t *Dict) ListIDs(input_objPtr *Params_struct, reply *string) error {
 	
@@ -1913,25 +2009,23 @@ func (t *Dict) ListIDs(input_objPtr *Params_struct, reply *string) error {
 	var key string;
 	key = (*input_objPtr).Key
 	// println("Key is : ",key)
-	hashValue := getHashValueForItem(config_obj.IpAddress, strconv.Itoa( config_obj.Port))
+	// hashValue := getHashValueForItem(config_obj.IpAddress, strconv.Itoa( config_obj.Port))
 
 	if(len(key) == 0){ //First node initiating request insert its own ID in key and make RPC to Successor
 
 		fmt.Println("First node initiating listKeys ")	
 
 		list_of_ids_reply := getListOfIDs()
+		fmt.Println("Get ListIDs Reply : ",list_of_ids_reply)
 		list_of_ids_reply = convertToResult(list_of_ids_reply)
 		(*input_objPtr).Key = strconv.Itoa(config_obj.ServerID)
-
-		//
-
 		//PRC to sucessor
-		succ_node := find_successor(hashValue)
+		// succ_node := find_successor(hashValue)
+		fmt.Println("Get ListIDs Successor node is ",successor.Port)
+		if(successor.Id != config_obj.ServerID) { //node is successor of itself, one node case
+			
 
-		if(succ_node.Id != config_obj.ServerID) { //node is successor of itself, one node case
-			fmt.Println("Successor node is ",succ_node.Port)
-
-			c, _ := jsonrpc.Dial(config_obj.Protocol, succ_node.IpAddress +":"+strconv.Itoa(succ_node.Port))
+			c, _ := jsonrpc.Dial(config_obj.Protocol, successor.IpAddress +":"+strconv.Itoa(successor.Port))
 		       var reply1 string
 		     defer c.Close()
 
@@ -1947,13 +2041,11 @@ func (t *Dict) ListIDs(input_objPtr *Params_struct, reply *string) error {
 			 //TO-DO This is final reply to be sent. Construct reply here
 			 *reply = removebackslash( constructListReply(*reply))
 			  // fmt.Println("Reply string after RPC to next node is : ",*reply)
-
 		} else {
 
 			*reply = list_of_ids_reply
 			*reply =removebackslash(constructListReply(*reply))
 			//TO-DO This is final reply to be sent. Construct reply here
-			
 		}
 
 		
@@ -1969,13 +2061,14 @@ func (t *Dict) ListIDs(input_objPtr *Params_struct, reply *string) error {
 			//make an RPC call
 			
 			list_of_ids_reply := getListOfIDs()
+			fmt.Println("Get ListIDs Reply : ",list_of_ids_reply)
 			list_of_ids_reply = convertToResult(list_of_ids_reply)
 
 
 			//PRC to sucessor
-			succ_node := find_successor(hashValue)
-			fmt.Println("Successor node is ",succ_node.Port)
-			c, _ := jsonrpc.Dial(config_obj.Protocol, succ_node.IpAddress +":"+strconv.Itoa(succ_node.Port))
+			// succ_node := find_successor(hashValue)
+			fmt.Println("Successor node is ",successor.Port)
+			c, _ := jsonrpc.Dial(config_obj.Protocol, successor.IpAddress +":"+strconv.Itoa(successor.Port))
 		       var reply1 string
 		  defer c.Close()
 
@@ -2197,7 +2290,7 @@ file, err := os.Open(filename)
 			fmt.Println("\n\n\n\n\n\n\n\n\n\n  ")
 			fmt.Println("Difference in time  : ",diff )
 			 fmt.Println(" time to live: ", Time_to_live , " t:",t, "t1:", t1)
-			if  diff < Time_to_live {
+			if  diff < Time_to_live || getPermission(file_obj) =="R" {
 								
 				
 				list_of_file_obj=append(list_of_file_obj,file_obj)
@@ -2254,7 +2347,7 @@ func startServer() {
     println("\nAccepting connections...\n")
     
 	    
-      if (config_obj.ServerID !=13) {
+      if (config_obj.IsFirstNode !=1) {
          Join();
     	}
 
@@ -2286,9 +2379,9 @@ func main() {
 
     }()
 
-    var input string
-	fmt.Scanln(&input)
-	fmt.Println("Done")    
+    //var input string
+	//fmt.Scanln(&input)
+	//fmt.Println("Done")    
 
     go func() {
       defer wg.Done()
@@ -2308,6 +2401,7 @@ func main() {
     	}()
 
     go func() {
+    	Time_to_live=5
     	defer wg.Done()
     	for{
     	
@@ -2329,17 +2423,17 @@ func main() {
 
 
 
-     go func() {
-    	defer wg.Done()
-    	for{
+     // go func() {
+    	// defer wg.Done()
+    	// for{
     	
-    	println("\nPurge executing")        
+    	// println("\nPurge executing")        
     	
-      Time_to_live=5*time.Minute
-      Purge()
-       time.Sleep(time.Minute * 2)
-  			}
-    	}()
+     // // Time_to_live=TimetoLive*time.Minute
+     //  Purge()
+     //   time.Sleep(time.Minute * 2)
+  			// }
+    	// }()
 
     wg.Wait()
 
