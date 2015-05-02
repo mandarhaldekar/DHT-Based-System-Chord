@@ -1936,7 +1936,8 @@ func getListOfIDs() string{
     scanner.Split(bufio.ScanLines)
 	
 	var str_obj string
-
+	//two dimensional array tp hold key relation pair
+	list_of_keys := make([][]string,0)
     for scanner.Scan() {
     	var file_obj Params_struct
 		//unmarshal into Params_struct
@@ -1948,6 +1949,9 @@ func getListOfIDs() string{
 			//Modify Accessed field
 			var temp interface{} //No need for object modification, Pass empty content
 			file_obj = updateRecord(file_obj,"Accessed","",&str_obj,temp,"")
+			key_rel_pair := []string{file_obj.Key,file_obj.Rel}
+    	
+    		list_of_keys = append(list_of_keys,key_rel_pair)
 			
 		} else {
 			panic(err.Error())
@@ -1961,13 +1965,7 @@ func getListOfIDs() string{
     //Write to the file
     writeListOfObjectsToFile(list_of_file_obj)
 
-    //two dimensional array tp hold key relation pair
-    list_of_keys := make([][]string,0)
-    for k, v := range key_rel_map {
-    	key_rel_pair := []string{k,v}
-    	
-    	list_of_keys = append(list_of_keys,key_rel_pair)
-    }
+
     //Marshal the array to convert to string
     string_arr,_ := json.Marshal(list_of_keys)
     // resp_obj := &Response_message{
