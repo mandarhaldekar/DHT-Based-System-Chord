@@ -35,14 +35,14 @@ type Params_struct struct {
 	Key string
 	Rel string
 	Value interface{}
-	// Permissions string
+	// Permission string
 }
 
 type Params_struct_with_perm struct {
 	Key string
 	Rel string
 	Value interface{}
-	Permissions string
+	Permission string
 }
 
 type Config_file struct {
@@ -188,7 +188,7 @@ flag=0
 	//	if err == nil{
 			fmt.Println("\n\n\n\n\n\n\n\n\n\n\n")
 					fmt.Println("Hash", getHashValueForItem(file_obj.Key,file_obj.Rel))
-			if  ((getHashValueForItem(file_obj.Key,file_obj.Rel) <= *id) ||  (getHashValueForItem(file_obj.Key,file_obj.Rel)> config_obj.ServerID) ) {
+if  ((getHashValueForItem(file_obj.Key,file_obj.Rel) <= *id ) && (*id < config_obj.ServerID)) ||( config_obj.ServerID < *id && (getHashValueForItem(file_obj.Key,file_obj.Rel) < *id)  ) {
 								
 					fmt.Println("\n\n\n\n\n\n\n\n\n\n\n")
 					fmt.Println("Hash", getHashValueForItem(file_obj.Key,file_obj.Rel))
@@ -228,9 +228,12 @@ func Stabilize() error{
     a:=0
     var pred Nodeid
 		 rpc_call := c.Go("Dict.AskPredecessor",&a,&pred,nil)
+
 		 <-rpc_call.Done
+		 fmt.Println("Successor was:::::::::",successor.Id,successor.Port)
+		 fmt.Println("Returned predecessor is:::::::::",pred.Id,pred.Port)
 		 //Last condition is to handle circular nature of ring
-		 if ((pred.Id > config_obj.ServerID && pred.Id < successor.Id) || (successor.Id==selfnode.Id) || (successor.Id < config_obj.ServerID && pred.Id != config_obj.ServerID) ) {
+		 if ((!(pred.Id==-1))&&((pred.Id > config_obj.ServerID && pred.Id < successor.Id) || (successor.Id==selfnode.Id) || (successor.Id < config_obj.ServerID && pred.Id != config_obj.ServerID)) ) {
 		 	fmt.Println("In If condition to update Successor")
 		 	config_obj.Successor=pred
 		 	successor=pred
@@ -293,16 +296,20 @@ return nil
 }
 
 func CheckPredecessor() error{
-	_, err := net.DialTimeout("tcp", predecessor.IpAddress +":"+strconv.Itoa(predecessor.Port), time.Duration(5)*time.Second)
+	timeVar1 := time.Now().In(time.UTC)
+	fmt.Println("In check pred before", timeVar1.Format("20060102150405"))
+	_, err := net.DialTimeout("tcp", predecessor.IpAddress +":"+strconv.Itoa(predecessor.Port),time.Duration(15)*time.Second)
+	timeVar1 = time.Now().In(time.UTC)
+	fmt.Println("In check pred after", timeVar1.Format("20060102150405"))
 	var dummy *Nodeid
 		dummy = &Nodeid{
 					IpAddress:"",
 					Port:-1,
 					Id:-1}			
-	if err != nil {
+	if err!= nil {
 	config_obj.Predecessor=(*dummy)
 	predecessor=(*dummy)
-
+    fmt.Println("assigning dummy to predecessor", err)
 
 	}
 
@@ -490,7 +497,8 @@ func fix_fingers() {
 	for i = 1;i<=max_bit;i++{
 
 
-	modID := ( config_obj.ServerID + int(math.Pow(2,float64(i-1))) % ( int(math.Pow(2,float64(8))) -1 ) )  
+	modID := ( (config_obj.ServerID + int(math.Pow(2,float64(i-1)))) % ( int(math.Pow(2,float64(8))) -1 ) )  
+	//fmt.Println("id to find::::::", modID)
 	var tempNodeid Nodeid
 		//(*dict).Find_successor(modID,&tempNodeid)
 	// println("Before calling find successor")
@@ -530,6 +538,8 @@ func find_successor(id int) Nodeid {
 			 
 
 			 return selfnode
+			}else{
+				nextnode = successor
 			}
 		}
 		// println("Next node: ");print(nextnode.IpAddress);println(nextnode.Port);println(nextnode.Id)
@@ -565,6 +575,7 @@ func (t* Dict) Find_successor(id int,output *Nodeid) error {
 	*output = find_successor(id)
 	return nil
 }
+
 func closest_preceding_node(id int) Nodeid {
 	
      for i:=max_bit; i>=1; i--{
@@ -579,8 +590,7 @@ func closest_preceding_node(id int) Nodeid {
 	return selfnode
 	
 	
-}
-// //fix
+}// //fix
 // func fix_my_successor() {
 // 	    if config_obj.ServerID == 30 { //First node
 //     	config_obj.Successor = config_obj.ServerID
@@ -638,7 +648,7 @@ func getPermission(file_obj Params_struct) string{
     	 
     	     	 	
 		case interface{}:
-			if k=="Permissions" {	
+			if k=="Permission" {	
     			
     			permission = v.(string)
     		}
@@ -699,7 +709,7 @@ func buildValueJSONObject(file_obj Params_struct,permission string) string {
 }
 
 //This function extracts contents of the value and returns Param Struct object
-// with only three things key, rel, value (no timestamp, size, permissions)
+// with only three things key, rel, value (no timestamp, size, permission)
 func extractContentIntoValue(file_obj Params_struct,permission *string) Params_struct{
 
 	val := file_obj.Value
@@ -889,7 +899,7 @@ func extract_params(f interface{},id *int) Params_struct {
 					input_obj.Value = vv[2]
 				}
 				// if len(vv)==4{
-				// 	input_obj.Permissions=vv[3]
+				// 	input_obj.Permission=vv[3]
 				// }
 			}
 
@@ -1368,7 +1378,7 @@ func (t *Dict) Insert(input_objPtr1 *Params_struct_with_perm,reply *string) erro
 	// if err != nil {
 		// log.Fatal("error:",err);
 	// }
-	var permission = (*input_objPtr1).Permissions
+	var permission = (*input_objPtr1).Permission
 	var key string;var rel string
 	key = (*input_objPtr1).Key
 	rel = (*input_objPtr1).Rel
@@ -1516,7 +1526,7 @@ func (t* Dict) InsertOrUpdate(input_objPtr1 *Params_struct_with_perm,reply *stri
 	
 
 
-	var permission = (*input_objPtr1).Permissions
+	var permission = (*input_objPtr1).Permission
 	var key string;var rel string
 	key = (*input_objPtr1).Key
 	rel = (*input_objPtr1).Rel
@@ -2323,12 +2333,7 @@ var dict *Dict
 var Time_to_live time.Duration
 
 func startServer() {
-	if len(os.Args) != 2{
- 		fmt.Println("Specify server configuration file")
- 		return
- 	}
-
-	read_server_config_file(os.Args[1])
+	
     dict = new(Dict)
   
     server := rpc.NewServer()
@@ -2372,6 +2377,16 @@ func startServer() {
 func main() {
 	runtime.GOMAXPROCS(8)
 	var wg sync.WaitGroup
+
+if len(os.Args) != 2{
+ 		fmt.Println("Specify server configuration file")
+ 		return
+ 	}
+
+	read_server_config_file(os.Args[1])
+
+
+
     wg.Add(4)
     go func() {
         defer wg.Done()
@@ -2401,7 +2416,7 @@ func main() {
     	}()
 
     go func() {
-    	Time_to_live=5
+    	
     	defer wg.Done()
     	for{
     	
@@ -2423,17 +2438,17 @@ func main() {
 
 
 
-     // go func() {
-    	// defer wg.Done()
-    	// for{
+     go func() {
+    	defer wg.Done()
+    	for{
     	
-    	// println("\nPurge executing")        
+    	println("\nPurge executing")        
     	
-     // // Time_to_live=TimetoLive*time.Minute
-     //  Purge()
-     //   time.Sleep(time.Minute * 2)
-  			// }
-    	// }()
+     // Time_to_live=TimetoLive*time.Minute
+      Purge()
+       time.Sleep(time.Minute * 2)
+  			}
+    	}()
 
     wg.Wait()
 
