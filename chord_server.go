@@ -31,6 +31,7 @@ type Nodeid struct{
 	Id int `json:"serverID" bson:"serverID"`
 }
 
+//Hold record in the file ,also handles input request object
 type Params_struct struct {
 	Key string
 	Rel string
@@ -38,6 +39,7 @@ type Params_struct struct {
 	// Permission string
 }
 
+//For input request containing permission
 type Params_struct_with_perm struct {
 	Key string
 	Rel string
@@ -45,6 +47,8 @@ type Params_struct_with_perm struct {
 	Permission string
 }
 
+
+//This structure stores server configuration information
 type Config_file struct {
 	ServerID int
 	Protocol string
@@ -70,7 +74,8 @@ var successor Nodeid
 var predecessor Nodeid
 var knownnode Nodeid
 var selfnode Nodeid
-//Hash function returns 64 bit
+
+//Hash function returns 4 bit hash value for given string
 func hash(input string) uint32 {
         hashValue := fnv.New32()
         hashValue.Write([]byte(input))
@@ -107,7 +112,8 @@ func removebackslash(s string) string {
     return tempstr
 }
 
-
+//Node asks known chord node to find its successor and joins the chord ring
+//and retrieves data from its successor. 
 func Join(){
 	
 	var dummy *Nodeid
@@ -130,32 +136,34 @@ func Join(){
 		  successor=succ
 		  print ("In join: Changed Successor to:", successor.Id )
 // myData:= make([]Params_struct,0)
-var myData string
-c1, _ := jsonrpc.Dial(config_obj.Protocol, successor.IpAddress +":"+strconv.Itoa(successor.Port))
-defer c1.Close()
-rpc_call = c1.Go("Dict.Retrieve_data",&id,&myData,nil)	
+		var myData string
+		c1, _ := jsonrpc.Dial(config_obj.Protocol, successor.IpAddress +":"+strconv.Itoa(successor.Port))
+		defer c1.Close()
 
-		  <-rpc_call.Done
-// writeListOfObjectsToFile(myData)
+		//Call Retrieve data on its successor to fetch all triplets that belong to itself. 
+		rpc_call = c1.Go("Dict.Retrieve_data",&id,&myData,nil)	
 
-file, err := os.OpenFile(filename, os.O_TRUNC|os.O_WRONLY,0600)
-	
-	if err != nil {
-		panic(err)
-	}
-	defer file.Close()
+				  <-rpc_call.Done
+		// writeListOfObjectsToFile(myData)
 
-	if _, err = file.WriteString(myData); err != nil {
-		
-		panic(err)
-	 } 
+		file, err := os.OpenFile(filename, os.O_TRUNC|os.O_WRONLY,0600)
+			
+			if err != nil {
+				panic(err)
+			}
+			defer file.Close()
 
-fmt.Println("My data")
-fmt.Println(myData)
-	fmt.Println("Retrieved my data")
+			if _, err = file.WriteString(myData); err != nil {
+				
+				panic(err)
+			 } 
+
+		fmt.Println("My data")
+		fmt.Println(myData)
+			fmt.Println("Retrieved my data")
 }
 
-
+//Return all triplets that belong to the new node who joined in the ring
 func (t* Dict) Retrieve_data(id *int,myData *string) error{
 
 file, err := os.Open(filename)
@@ -188,7 +196,8 @@ flag=0
 	//	if err == nil{
 			fmt.Println("\n\n\n\n\n\n\n\n\n\n\n")
 					fmt.Println("Hash", getHashValueForItem(file_obj.Key,file_obj.Rel))
-if  ((getHashValueForItem(file_obj.Key,file_obj.Rel) <= *id ) && (*id < config_obj.ServerID)) ||( config_obj.ServerID < *id && (getHashValueForItem(file_obj.Key,file_obj.Rel) < *id)  ) {
+
+if  ((getHashValueForItem(file_obj.Key,file_obj.Rel) <= *id ) && (*id < config_obj.ServerID)) ||( config_obj.ServerID < *id && (getHashValueForItem(file_obj.Key,file_obj.Rel) < *id) && getHashValueForItem(file_obj.Key,file_obj.Rel) > config_obj.ServerID ) || (config_obj.ServerID > *id && getHashValueForItem(file_obj.Key,file_obj.Rel) > config_obj.ServerID ) {
 								
 					fmt.Println("\n\n\n\n\n\n\n\n\n\n\n")
 					fmt.Println("Hash", getHashValueForItem(file_obj.Key,file_obj.Rel))
@@ -218,7 +227,8 @@ if  ((getHashValueForItem(file_obj.Key,file_obj.Rel) <= *id ) && (*id < config_o
 
 }
 
-
+//It is run in background thread periodically and executed once in 5 seconds
+//It asked its successor for its predecessor p and sees if p should be its successor instead.
 func Stabilize() error{
 
 	 c, _:= jsonrpc.Dial(config_obj.Protocol, successor.IpAddress +":"+strconv.Itoa(successor.Port))
@@ -227,6 +237,7 @@ func Stabilize() error{
 
     a:=0
     var pred Nodeid
+    //Ask successor about its predecessor
 		 rpc_call := c.Go("Dict.AskPredecessor",&a,&pred,nil)
 
 		 <-rpc_call.Done
@@ -265,6 +276,7 @@ return nil
 }
 
 
+//Notify is called from node's predecessor p to itself as p thinks it is our predecessor
 func (t* Dict) Notify(newnode *Nodeid,b *int) error{
 	
 	fmt.Println("In Notify from ID : ",(*newnode).Id)
@@ -282,19 +294,21 @@ func (t* Dict) Notify(newnode *Nodeid,b *int) error{
 		predecessor=*newnode
 		fmt.Println("I changed my Predecessor to : ",(*newnode).Id)
 	}
-
-
 	*b = 0
 	return nil
 }
 
 
+//Return my predecessor to my successor
 func (t* Dict) AskPredecessor(a int,prednode *Nodeid) error{
 *prednode=predecessor
 
 return nil
 }
 
+
+//Check if node's predecessor and see it is still running. If predecessor has failed then 
+//clear the predecessor (Assign dummy from implementation perspective)
 func CheckPredecessor() error{
 	timeVar1 := time.Now().In(time.UTC)
 	fmt.Println("In check pred before", timeVar1.Format("20060102150405"))
@@ -319,6 +333,7 @@ func CheckPredecessor() error{
 	fmt.Println("---This is CheckPredecessor---",timeVar.Format("20060102150405"))
 return nil
 }
+
 //This function read server configuration from a file and stores informaton is Config_file structure
 func read_server_config_file(severConfigFile string){
 
@@ -363,6 +378,8 @@ func read_server_config_file(severConfigFile string){
 	selfnode.Port=config_obj.Port
 	selfnode.IpAddress=config_obj.IpAddress
 
+
+	//Initialize successor and predecessor to itself
     successor = selfnode
     fmt.Println("*****SUCCESSOR***********")
 	fmt.Println("ID : ",successor.Id)
@@ -376,37 +393,10 @@ func read_server_config_file(severConfigFile string){
 	fmt.Println("Port : ",predecessor.Port)    
     
     
-	// tempSuccessor := config_obj.Successor
- //    m1 := tempSuccessor.(map[string]interface{})
- //    // println("Successor is :")
- //    for k, v := range m1 {
- //    	 switch v.(type) {
-
-    	 
-    	     	 	
- //    	case string:
- //    		if k=="serverID"{
- //    			temp_id,_ := strconv.ParseInt(v.(string), 10, 32)
- //    			successor.Id = int(temp_id)
- //    			// println("\nSuccessor ID is ");print(successor.Id)
- //    		} else{
-	// 			successor.IpAddress=v.(string)    	 	
-	// 			// println("\nSuccessor IP is ");print(successor.IpAddress)
- //    		}
- //    		break
 
 
-	//     default:
-	//     	successor.Port=int(v.(float64))
-	//     	// println("\nSuccessor Port ");print(successor.Port)
-	//     	break
-
-	//     }
- //    }
-
-
-
-tempknownnode := config_obj.Knownnode
+	//Read known node from configuration file
+	tempknownnode := config_obj.Knownnode
     m3 := tempknownnode.(map[string]interface{})
     // println("Successor is :")
     for k, v := range m3 {
@@ -417,10 +407,7 @@ tempknownnode := config_obj.Knownnode
     	case string:
     		if k=="serverID"{
     			
-    			temp_id,_ := strconv.ParseInt(v.(string), 10, 32)
-    			knownnode.Id = int(temp_id)
-    			println("\nKnownnode ID is ");print(knownnode.Id)
-    		} else{
+    		} else{ //IP Address
 				knownnode.IpAddress=v.(string)    	 	
 				println("knownnode IP is ");print(knownnode.IpAddress)
     		}
@@ -435,36 +422,14 @@ tempknownnode := config_obj.Knownnode
 	    }
     }
 
-
-    // tempPredecessor := config_obj.Predecessor
-    // m2 := tempPredecessor.(map[string]interface{})
-    // // println("\nPredecessor is : ")
-    // for k1, v1 := range m2 {
-    // 	 switch v1.(type) {
-
-    	 
-    	     	 	
-    // 	case string:
-    // 		if k1=="serverID"{
-    			
-    // 			temp_id,_ := strconv.ParseInt(v1.(string), 10, 32)
-    // 			predecessor.Id = int(temp_id)
-    // 			// println("\nPredecessor ID is ");print(predecessor.Id)
-    // 		} else{
-				// predecessor.IpAddress=v1.(string)    	 	
-				// // println("\nPredecessor IP is ");print(predecessor.IpAddress)
-    // 		}
-    // 		break
+    knownnode.Id = getHashValueForItem(knownnode.IpAddress,strconv.FormatInt(int64(knownnode.Port),10))
+    println("\nKnownnode ID is ");print(knownnode.Id)
+    /**TO_DO***
+    * Calculate serverId here in the code
+    */
 
 
-	   //  default:
-	   //  	predecessor.Port=int(v1.(float64))
-	   //  	// println("\nPredecessor Port is ");print(predecessor.Port)
-	   //  	break
-
-	   //  }
-    // }
-
+    //Read file name which manages collections of triplets
     persistenStorageContainerObj := config_obj.PersistentStorageContainer
     m := persistenStorageContainerObj.(map[string]interface{})
     for _, v := range m {
@@ -483,12 +448,15 @@ tempknownnode := config_obj.Knownnode
 		}
 	}
 
+	//Initialize all fingers pointing to its successor
 	for i:=max_bit; i>=1; i--{
 		finger[i] = successor
 	}
 	
 }
 
+//This is called periodically in the background
+//to refresh its finger entries
 func fix_fingers() {
 
 	fmt.Println("Printing fingerIDs")
@@ -519,6 +487,8 @@ func fix_fingers() {
 
 
 }
+
+//Wrapper for find_successor
 func find_successor(id int) Nodeid {
 
 	
@@ -542,16 +512,7 @@ func find_successor(id int) Nodeid {
 				nextnode = successor
 			}
 		}
-		// println("Next node: ");print(nextnode.IpAddress);println(nextnode.Port);println(nextnode.Id)
-		// if (nextnode==selfnode){
-		// 	if( id<successor.Id || id > config_obj.ServerID){
-		// 		return successor
-		// 	}else if(id< config_obj.ServerID){
-		
-		// 	// return selfnode
-		// 	 return selfnode
-		// 	}
-		// }
+
 		var output Nodeid
 
 		 c, err := jsonrpc.Dial(config_obj.Protocol, nextnode.IpAddress +":"+strconv.Itoa(nextnode.Port))
@@ -570,12 +531,14 @@ func find_successor(id int) Nodeid {
 
 }
 
+//RPC function for Find_successor
 func (t* Dict) Find_successor(id int,output *Nodeid) error {
 	
 	*output = find_successor(id)
 	return nil
 }
 
+//Searches finger table from last entry and returns finger if it falls between id and node's id itself, otherwise return node's own id
 func closest_preceding_node(id int) Nodeid {
 	
      for i:=max_bit; i>=1; i--{
@@ -590,30 +553,7 @@ func closest_preceding_node(id int) Nodeid {
 	return selfnode
 	
 	
-}// //fix
-// func fix_my_successor() {
-// 	    if config_obj.ServerID == 30 { //First node
-//     	config_obj.Successor = config_obj.ServerID
-//     	config_obj.Predecessor = config_obj.ServerID
-//     } else {
-//     	//call a known node
-//     	var my_successor int
-//     	c, err := jsonrpc.Dial("tcp","192.168.0.102:8222") //30th server
-		
-//     	fmt.Println()
-//     	rpc_call := c.Go("Dict.Find_successor",&config_obj.ServerID,&my_successor,nil)		
-// 					<-rpc_call.Done
-// 					if err != nil {
-// 						log.Fatal("Dict error:",err);
-// 					}
-// 					println("Reply received is : ",my_successor)
-// 					config_obj.Successor = my_successor
-//     }
-//     fmt.Println("Successor : ",config_obj.Successor)
-
-
-// }
-//Write the object to persisten storage container
+}
 
 
 //This is structure uses at Value field for triplet
@@ -627,6 +567,7 @@ type ValueType_struct struct {
 	
 }
 
+//Returns size of data
 func getSizeInBytes(val interface{}) string {
      s,_:=json.Marshal(&val)
      // fmt.Println("BATMAN",s)
@@ -635,6 +576,8 @@ func getSizeInBytes(val interface{}) string {
 
 
 }
+
+//Retrieves permission from the record stored in file
 func getPermission(file_obj Params_struct) string{
 	val := file_obj.Value
 	var permission string
@@ -667,12 +610,8 @@ func getPermission(file_obj Params_struct) string{
    return permission
 }
 
-func getPermissionFromInput(file_obj Params_struct) {
 
-
-
-}
-/** This function takes triplet(containing ky,rel,Value) from the structure and builds triplet with Value containing the above fields
+/** This function takes triplet(containing ky,rel,Value) from the structure and builds triplet with Value containing the fields like modified,created, size, accessed etc.
 */
 func buildValueJSONObject(file_obj Params_struct,permission string) string {
 
@@ -751,6 +690,7 @@ func extractContentIntoValue(file_obj Params_struct,permission *string) Params_s
 // field: If "Modified", modify the Modified field
 //fieldContent : If "Content", modify content from the input "content" parameter
 //*str_obj_record is the json string representation of the modified input object
+//Update permissions only if non-empty permissions are passed to this function in last parameter
 func updateRecord(file_obj Params_struct,field string,fieldContent string,str_obj_record *string,content interface{},updated_permission string) Params_struct{
 
 	fmt.Println(file_obj.Value)
@@ -1022,90 +962,6 @@ func partial_search_in_file(filestring string,key string,rel string,flag *int,st
     *str_obj=partialreply
 	return nil
 }
-/**
-This function finds the successor of id
-*/
-// func (t *Dict) Find_successor(id *int,successor *int) error {
-
-// 	if config_obj.ServerID == config_obj.Successor { //TO-DO: May have to change this.  (This is to cater for one node in the ring case)
-		
-// 		*successor = config_obj.ServerID
-// 		config_obj.Successor = *id 
-		
-// 	}
-
-// 	// if *id > config_obj.ServerID && *id < config_obj.Successor {
-// 	// 	*successor = config_obj.Successor;
-// 	// }
-
-// 	return nil
-// }
-//Search for triplet in the file, send appropriate reply
-// func (t *Dict) Lookup(input_objPtr *Params_struct,reply *string) error {
-
-// 	var key string;var rel string;var id int
-// 	key = (*input_objPtr).Key
-// 	rel = (*input_objPtr).Rel
-
-// 	//Get hash value for data item
-// 	hashValue := getHashValueForItem(key, rel)
-// 	//Find the successor node
-// 	succ_node := find_successor(hashValue)
-
-// 	fmt.Println("Hash value of the data :",hashValue)
-// 	//Check if current node is successor node. If not then call RPC to insert at successor node
-
-// 	if (succ_node.Id != config_obj.ServerID){
-// 		fmt.Println("In IFFFF")
-// 		// succ_node := find_successor(hashValue)
-// 		fmt.Println("Successor node is ",succ_node.Port)
-// 		c, err := jsonrpc.Dial(config_obj.Protocol, succ_node.IpAddress +":"+strconv.Itoa(succ_node.Port))
-// 	      defer c.Close()
-// 		  var reply1 string
-
-// 		 rpc_call := c.Go("Dict.Lookup",input_objPtr,&reply1,nil)		
-// 		  <-rpc_call.Done
-
-// 		  fmt.Println("If conf reply is : ",reply1)
-// 		  *reply=reply1
-// 		 // println("output is : ");println(output.IpAddress);println(output.Port)
-// 		 if err != nil {
-// 		 	log.Fatal("Dict error:",err);
-// 		 }		
-
-// 	} else { 
-
-
-// 				var str_obj string
-// 			flag := 0	
-// 			search_in_file(filename,key,rel,&flag,&str_obj)
-// 			var resp_obj *Response_message
-// 			if flag == 1 {
-				
-// 				//Construct a reply message
-// 				resp_obj = &Response_message{
-// 								Result:str_obj,
-// 								Id: id,
-// 								Error: "null"}		
-// 			} else {
-// 				//Construct a reply message
-// 				fmt.Println("\nNo matching record found")
-// 				resp_obj = &Response_message{
-// 								Result:"null",
-// 								Id: id,
-// 								Error: "null"}		
-// 			}
-// 			b,_ := json.Marshal(resp_obj)
-// 			*reply = string(b)  //Set the reply
-// 	}
-// 	// input_obj := extract_params(f,&id)
-// 	// key = input_obj.Key
-// 	// rel = input_obj.Rel
-	
-// 	fmt.Println("Reply sent is ",*reply)
-// 	return nil
-	
-// }
 
 
 func (t *Dict) LookupOnRel(input_objPtr *Params_struct,reply *string) error {
@@ -1168,19 +1024,17 @@ func (t *Dict) LookupOnVal(input_objPtr *Params_struct,reply *string) error {
 
 //Lookup that handles partial match
 func (t *Dict) Lookup(input_objPtr *Params_struct,reply *string) error {
-	
-	// var f interface{}
-	// //Unmarshal in map of string to interface
-	// err := json.Unmarshal([]byte(*args), &f)
-	// if err != nil {
-	// 	log.Fatal("error:",err);
-	// }
+
+	//Extract key and relation	
 	var key string;var rel string
 	key = (*input_objPtr).Key
 	rel = (*input_objPtr).Rel
 	
+
+	//If both key and relation are present, then do normal lookup
 	if(key!="" && rel!=""){
 
+	//Find hash value of data
 	hashValue := getHashValueForItem(key, rel)
 	//Find the successor node
 	succ_node := find_successor(hashValue)
@@ -1243,7 +1097,7 @@ func (t *Dict) Lookup(input_objPtr *Params_struct,reply *string) error {
 
 
 
-}else if(key==""){
+}else if(key==""){  //Key is not present, this is partial match on Relation
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 		visitednodes := make([]int,0)
@@ -1303,7 +1157,7 @@ func (t *Dict) Lookup(input_objPtr *Params_struct,reply *string) error {
 		*reply = removebackslash(string(b) )
 	//Partial match for rel ends			
 	
-	} else if(rel==""){
+	} else if(rel==""){   //Relation is not present, this is partial match on Key
 
 		visitednodes := make([]int,0)
 		var valueToSearch int
@@ -1368,15 +1222,13 @@ func (t *Dict) Lookup(input_objPtr *Params_struct,reply *string) error {
 	
 }
 
+//Insert finds successor of the data and calls insert on that node
 //Insert the triplet if does not already exists and return true, else return false
 func (t *Dict) Insert(input_objPtr1 *Params_struct_with_perm,reply *string) error {
 
 	// var f interface{}
 	var write_file_reply int
-	//Unmarshal in map of string to interface
-	// err := json.Unmarshal([]byte(*args), &f)
-	// if err != nil {
-		// log.Fatal("error:",err);
+	
 	// }
 	var permission = (*input_objPtr1).Permission
 	var key string;var rel string
@@ -1389,11 +1241,6 @@ func (t *Dict) Insert(input_objPtr1 *Params_struct_with_perm,reply *string) erro
 									Rel: rel,
 									Value:(*input_objPtr1).Value}
 
-	// input_obj := extract_params(f,&id)
-	// key = input_obj.Key
-	// rel = input_obj.Rel
-	
-	
 	hashValue := getHashValueForItem(key, rel)
 
 	//Find the successor node
@@ -1456,29 +1303,19 @@ func (t *Dict) Insert(input_objPtr1 *Params_struct_with_perm,reply *string) erro
 
 }
 
-
-//This is to get data from predecessor when it is about to leave
+//Predecessor call this function when it is about to leave to insert that data onto its successor(i.e this node)
 func (t *Dict) InsertOnShutdown(input_objPtr *Params_struct,reply *string) error {
 
-	// var f interface{}
 	var write_file_reply int
-	//Unmarshal in map of string to interface
-	// err := json.Unmarshal([]byte(*args), &f)
-	// if err != nil {
-		// log.Fatal("error:",err);
-	// }
 	
 	var key string;var rel string
 	key = (*input_objPtr).Key
 	rel = (*input_objPtr).Rel
-	// input_obj := extract_params(f,&id)
-	// key = input_obj.Key
-	// rel = input_obj.Rel
 	
 	
 	//Check if current node is successor node. If not then call RPC to insert at successor node
 	  //Successor is current node, insert here
-	//	fmt.Println("In else")
+	
 		var str_obj string
 		flag := 0	
 
@@ -1520,12 +1357,9 @@ func (t *Dict) InsertOnShutdown(input_objPtr *Params_struct,reply *string) error
 //Read triplets from file, store them in list of Param_struct object.
 //If any triplet matches with given key and relation, then update its value with new value
 //In the end, write entire list back to the file
+//It does not update records that have permission "R"
 func (t* Dict) InsertOrUpdate(input_objPtr1 *Params_struct_with_perm,reply *string) error{
 	
-	
-	
-
-
 	var permission = (*input_objPtr1).Permission
 	var key string;var rel string
 	key = (*input_objPtr1).Key
@@ -1557,9 +1391,6 @@ func (t* Dict) InsertOrUpdate(input_objPtr1 *Params_struct_with_perm,reply *stri
 		 rpc_call := c.Go("Dict.InsertOrUpdate",input_objPtr1,&reply1,nil)		
 		  <-rpc_call.Done
 
-		  // fmt.Println("If conf reply is : ",reply1)
-		  // *reply=reply1
-		 // println("output is : ");println(output.IpAddress);println(output.Port)
 		 if err != nil {
 		 	log.Fatal("Dict error:",err);
 		 }		
@@ -1590,19 +1421,11 @@ func (t* Dict) InsertOrUpdate(input_objPtr1 *Params_struct_with_perm,reply *stri
 				str_obj = scanner.Text()
 				err = json.Unmarshal([]byte(str_obj),&file_obj)
 
-
-
-
-
-
-
-
-
 				if err == nil{
 					  
 					if file_obj.Key == key && file_obj.Rel == rel {
 						
-						if(getPermission(file_obj)=="RW" ){
+						if(getPermission(file_obj)=="RW" ){ //Update record only if permission is RW
 							fmt.Println("\nFound the record")
 							//Content to be modified, pass new content
 							file_obj = updateRecord(file_obj,"Modified","Content",&str_obj,(*input_objPtr).Value,permission)
@@ -1641,7 +1464,8 @@ func (t* Dict) InsertOrUpdate(input_objPtr1 *Params_struct_with_perm,reply *stri
 }
 //Read triplets from file, store them in list of Param_struct object.
 //If any triplet matches with given key and relation, then do not add it to the list
-//In the end, write entire list back to the file
+//In the end, write entire list back to the file. 
+//It does not delete records that have permission "R"
 
 func (t *Dict) Delete(input_objPtr *Params_struct, reply *string) error {
 	
@@ -1734,6 +1558,8 @@ func (t *Dict) Delete(input_objPtr *Params_struct, reply *string) error {
 	} //else of successor
     return nil	
 }
+
+//This function returns list of all triplet's keys present in the node
 func getListOfKeys() string {
 
 	key_rel_map := make(map[string]string)
@@ -1809,6 +1635,8 @@ func constructListReply(list_of_keys_string string)string{
 }
 
 //Read triplets from the file, store key, relation pair into the map and return the list of keys
+//Node if contacted by client, will add its own reply and call's successor's ListKey, that successor will in turn add its own list of keys to the reply and calls its successor and so on
+//This will continue for all nodes in the ring until call reaches to the first node. First node will return accumulated reply to the client
 func (t *Dict) ListKeys(input_objPtr *Params_struct, reply *string) error {
 	
 	
@@ -2105,28 +1933,29 @@ func (t *Dict) ListIDs(input_objPtr *Params_struct, reply *string) error {
 	
 	return nil
 }
-// //This function closes the existing connection, stops the listener and then exit the server program
-// func (t *Dict) Shutdown(input_objPtr *Params_struct,reply *string) error {
-	
-// 	fmt.Println("\nClosing the server!!")
-// 	*reply = "shutdown successful!!"
-// 	conn.Close()
-// 	listener.Close()
-// 	os.Exit(0)
-// 	return nil
-// }
 
+//Called by node leaving the ring to notify its predecessor of its own successor
 func (t* Dict) NotifyToPredecessorOnShutDown(succ_node *Nodeid,reply *string) error{
+fmt.Println("\n\nON SHUTDOWN Changing my successor to ::::::::::::::::::::::: ",succ_node.Id )
 successor=*succ_node
+fmt.Println("\n\nON SHUTDOWN Changed my successor to ::::::::::::::::::::::: ",successor.Id )
 
 return nil
 }
 
+//Called by node leaving the ring to notify its successor of its own predecessor
 func (t* Dict) NotifyToSuccessorOnShutDown(pred_node *Nodeid,reply *string) error{
+fmt.Println("\n\nON SHUTDOWN Changing my successor to ::::::::::::::::::::::: ",pred_node.Id )
 predecessor = *pred_node
+fmt.Println("\n\nON SHUTDOWN Changed my successor to ::::::::::::::::::::::: ",predecessor.Id )
+
+
 
 return nil
 }
+
+//This is called when client calls shutdown over the node. Before leaving, node will transfer all its data to the successor, 
+//notify its predecessor and successor of each other and then leave the chord ring
 func (t *Dict) Shutdown(input_objPtr *Params_struct,reply *string) error {
 	
 
@@ -2208,8 +2037,8 @@ file, err := os.Open(filename)
 }
 
 
-
-
+//This is to delete the records which have not been accessed for interval specified in the configuration file(TimetoLive field)
+//This runs periodically in the background after every 2 minutes
 func Purge(){
 
 
@@ -2328,8 +2157,10 @@ file, err := os.Open(filename)
 var listener net.Listener //this holds the Listener object
 var conn net.Conn //This holds the connection
 var dict *Dict
-var Time_to_live time.Duration
+var Time_to_live time.Duration //Holds TimetoLive from server configuration file
 
+
+//This functions listens for connections at the specified protocal, IP address and port 
 func startServer() {
 	
     dict = new(Dict)
@@ -2350,10 +2181,12 @@ func startServer() {
     println("\nAccepting connections...\n")
     
 	    
+	  //If it first node, then do not call Join otherwise call Join
       if (config_obj.IsFirstNode !=1) {
          Join();
     	}
 
+    //Listen for connections
     for {
 		    
  	    	conn,err  = listener.Accept()
@@ -2381,6 +2214,7 @@ if len(os.Args) != 2{
  		return
  	}
 
+ 	//Read Server configuration file
 	read_server_config_file(os.Args[1])
 
 
@@ -2403,6 +2237,7 @@ if len(os.Args) != 2{
       fix_fingers()
     }()
 
+    //Launch stabilize thread
     go func() {
     	defer wg.Done()
     	for{
