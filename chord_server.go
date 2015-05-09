@@ -25,6 +25,7 @@ type Response_message struct {
 	Error string
 }
 
+//Structure holds information of a node
 type Nodeid struct{
 	IpAddress string `json:"ipAddress" bson:"ipAddress"`
 	Port int `json:"port" bson:"port"`
